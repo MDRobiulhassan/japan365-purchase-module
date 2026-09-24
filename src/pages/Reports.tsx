@@ -12,12 +12,22 @@ import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge, statusColor, statusLabel } from '@/components/ui/Badge';
 import { LoadingSpinner, PageContainer, ErrorState } from '@/components/ui/States';
-import type { PurchaseOrder, PurchaseInvoice, Supplier, GoodsReceipt } from '@/types';
+import type { PurchaseOrder, PurchaseInvoice, Supplier, GoodsReceipt, POSummaryView } from '@/types';
+
+function getSupplierName(order: POSummaryView | (PurchaseOrder & { supplier?: Supplier })): string {
+  if ('supplier_name' in order && order.supplier_name) {
+    return order.supplier_name;
+  }
+  if ('supplier' in order && order.supplier?.name) {
+    return order.supplier.name;
+  }
+  return 'Unknown';
+}
 
 export function Reports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [orders, setOrders] = useState<(PurchaseOrder & { supplier?: Supplier })[]>([]);
+  const [orders, setOrders] = useState<(POSummaryView | (PurchaseOrder & { supplier?: Supplier }))[]>([]);
   const [invoices, setInvoices] = useState<(PurchaseInvoice & { supplier?: Supplier })[]>([]);
   const [receipts, setReceipts] = useState<(GoodsReceipt & { supplier?: Supplier })[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -30,14 +40,29 @@ export function Reports() {
     setLoading(true);
     setError(null);
     try {
-      const [ordersRes, invoicesRes, receiptsRes, suppliersRes] = await Promise.all([
-        supabase.from('purchase_orders').select('*, supplier:suppliers(*)').order('order_date', { ascending: false }),
+      // First attempt to query the high-performance unified po_summary_view
+      const { data: viewData, error: viewError } = await supabase
+        .from('po_summary_view')
+        .select('*')
+        .order('order_date', { ascending: false });
+
+      const [invoicesRes, receiptsRes, suppliersRes] = await Promise.all([
         supabase.from('purchase_invoices').select('*, supplier:suppliers(*)'),
         supabase.from('goods_receipts').select('*, supplier:suppliers(*)'),
         supabase.from('suppliers').select('*'),
       ]);
 
-      setOrders((ordersRes.data as (PurchaseOrder & { supplier?: Supplier })[]) ?? []);
+      if (!viewError && viewData) {
+        setOrders(viewData as POSummaryView[]);
+      } else {
+        // Fallback to direct purchase_orders table query if view is not yet migrated
+        const { data: directOrders } = await supabase
+          .from('purchase_orders')
+          .select('*, supplier:suppliers(*)')
+          .order('order_date', { ascending: false });
+        setOrders((directOrders as (PurchaseOrder & { supplier?: Supplier })[]) ?? []);
+      }
+
       setInvoices((invoicesRes.data as (PurchaseInvoice & { supplier?: Supplier })[]) ?? []);
       setReceipts((receiptsRes.data as (GoodsReceipt & { supplier?: Supplier })[]) ?? []);
       setSuppliers((suppliersRes.data as Supplier[]) ?? []);
@@ -50,6 +75,7 @@ export function Reports() {
 
   if (loading) return <LoadingSpinner size="lg" />;
   if (error) return <ErrorState message={error} onRetry={loadReports} />;
+
 
   // Calculations
   const validOrders = orders.filter((o) => o.status !== 'cancelled' && o.status !== 'draft');
@@ -66,8 +92,9 @@ export function Reports() {
   const supplierSpend: Record<string, { name: string; count: number; total: number }> = {};
   validOrders.forEach((o) => {
     const id = o.supplier_id;
+    const sName = getSupplierName(o);
     if (!supplierSpend[id]) {
-      supplierSpend[id] = { name: o.supplier?.name ?? 'Unknown', count: 0, total: 0 };
+      supplierSpend[id] = { name: sName, count: 0, total: 0 };
     }
     supplierSpend[id].count += 1;
     supplierSpend[id].total += Number(o.total_amount);
@@ -260,19 +287,31 @@ export function Reports() {
             <p className="text-sm text-slate-400 text-center py-10">No orders yet</p>
           ) : (
             <div className="divide-y divide-slate-100">
-              {validOrders.slice(0, 8).map((o) => (
-                <div key={o.id} className="flex items-center justify-between px-5 py-3">
-                  <div>
-                    <span className="text-sm font-semibold text-slate-800">{o.po_number}</span>
-                    <span className="ml-2 text-xs text-slate-500">{o.supplier?.name}</span>
+              {validOrders.slice(0, 8).map((o) => {
+                const supplierName = getSupplierName(o);
+                const fulfillment = 'fulfillment_percentage' in o ? o.fulfillment_percentage : undefined;
+                const itemCount = 'total_items_count' in o ? o.total_items_count : undefined;
+                return (
+                  <div key={o.id} className="flex items-center justify-between px-5 py-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-800">{o.po_number}</span>
+                        <span className="text-xs text-slate-500">{supplierName}</span>
+                      </div>
+                      {itemCount !== undefined && fulfillment !== undefined && (
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {itemCount} item{itemCount !== 1 ? 's' : ''} · {fulfillment}% received
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-slate-400">{formatDate(o.order_date)}</span>
+                      <Badge color={statusColor(o.status)}>{statusLabel(o.status)}</Badge>
+                      <span className="text-sm font-semibold text-slate-700">{formatCurrency(Number(o.total_amount))}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-slate-400">{formatDate(o.order_date)}</span>
-                    <Badge color={statusColor(o.status)}>{statusLabel(o.status)}</Badge>
-                    <span className="text-sm font-semibold text-slate-700">{formatCurrency(Number(o.total_amount))}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

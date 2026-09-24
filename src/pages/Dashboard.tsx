@@ -46,41 +46,63 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   async function loadDashboard() {
     setLoading(true);
     try {
-      const [ordersRes, suppliersRes, invoicesRes, poReceiptsRes] = await Promise.all([
+      // 1. Attempt to fetch pre-computed KPIs from dashboard_metrics_view
+      const { data: metrics, error: metricsErr } = await supabase
+        .from('dashboard_metrics_view')
+        .select('*')
+        .single();
+
+      // 2. Fetch recent orders and overdue invoices selectively
+      const [ordersRes, overdueRes] = await Promise.all([
         supabase.from('purchase_orders').select('*, supplier:suppliers(*)').order('created_at', { ascending: false }).limit(8),
-        supabase.from('suppliers').select('*', { count: 'exact' }).eq('status', 'active'),
-        supabase.from('purchase_invoices').select('*, supplier:suppliers(*)'),
-        supabase.from('goods_receipts').select('po_id').eq('status', 'partial'),
+        supabase.from('purchase_invoices').select('*, supplier:suppliers(*)').or('status.eq.overdue,status.eq.unpaid').order('due_date', { ascending: true }).limit(5),
       ]);
 
       const orders = ordersRes.data ?? [];
-      const suppliers = suppliersRes.data ?? [];
-      const invoices = invoicesRes.data ?? [];
-      const partialReceiptPoIds = (poReceiptsRes.data ?? []).map((r) => r.po_id);
+      const overdue = (overdueRes.data ?? []).filter((i) => i.status === 'overdue' || new Date(i.due_date).getTime() < Date.now());
 
-      const totalSpend = orders
-        .filter((o) => o.status !== 'cancelled' && o.status !== 'draft')
-        .reduce((sum, o) => sum + Number(o.total_amount), 0);
+      if (!metricsErr && metrics) {
+        setKpis({
+          totalOrders: metrics.total_orders,
+          pendingApproval: metrics.pending_approval_orders,
+          totalSpend: Number(metrics.total_spend),
+          activeSuppliers: metrics.active_suppliers,
+          pendingInvoices: metrics.open_invoice_amount > 0 ? 1 : 0,
+          overdueInvoices: metrics.overdue_invoices_count,
+          pendingReceipts: metrics.partial_receipts_count,
+          openAmount: Number(metrics.open_invoice_amount),
+        });
+      } else {
+        // Fallback calculations if view is not yet applied
+        const [suppliersRes, invoicesRes, poReceiptsRes] = await Promise.all([
+          supabase.from('suppliers').select('*', { count: 'exact' }).eq('status', 'active'),
+          supabase.from('purchase_invoices').select('*, supplier:suppliers(*)'),
+          supabase.from('goods_receipts').select('po_id').eq('status', 'partial'),
+        ]);
 
-      const openAmount = invoices
-        .filter((i) => i.status !== 'paid')
-        .reduce((sum, i) => sum + (Number(i.total_amount) - Number(i.amount_paid)), 0);
+        const suppliers = suppliersRes.data ?? [];
+        const invoices = invoicesRes.data ?? [];
+        const partialReceiptPoIds = (poReceiptsRes.data ?? []).map((r) => r.po_id);
 
-      const overdue = invoices
-        .filter((i) => i.status === 'overdue')
-        .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-        .slice(0, 5);
+        const totalSpend = orders
+          .filter((o) => o.status !== 'cancelled' && o.status !== 'draft')
+          .reduce((sum, o) => sum + Number(o.total_amount), 0);
 
-      setKpis({
-        totalOrders: orders.length,
-        pendingApproval: orders.filter((o) => o.status === 'pending_approval' || o.status === 'draft').length,
-        totalSpend,
-        activeSuppliers: suppliers.length,
-        pendingInvoices: invoices.filter((i) => i.status !== 'paid').length,
-        overdueInvoices: overdue.length,
-        pendingReceipts: partialReceiptPoIds.length,
-        openAmount,
-      });
+        const openAmount = invoices
+          .filter((i) => i.status !== 'paid')
+          .reduce((sum, i) => sum + (Number(i.total_amount) - Number(i.amount_paid)), 0);
+
+        setKpis({
+          totalOrders: orders.length,
+          pendingApproval: orders.filter((o) => o.status === 'pending_approval' || o.status === 'draft').length,
+          totalSpend,
+          activeSuppliers: suppliers.length,
+          pendingInvoices: invoices.filter((i) => i.status !== 'paid').length,
+          overdueInvoices: overdue.length,
+          pendingReceipts: partialReceiptPoIds.length,
+          openAmount,
+        });
+      }
 
       setRecentOrders(orders as (PurchaseOrder & { supplier?: Supplier })[]);
       setOverdueInv(overdue as (PurchaseInvoice & { supplier?: Supplier })[]);
