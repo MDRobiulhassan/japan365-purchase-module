@@ -96,3 +96,48 @@ export interface PurchaseInvoice {
   supplier?: Supplier;
   purchase_order?: PurchaseOrder;
 }
+
+export interface POSummaryView {
+  id: string;
+  po_number: string;
+  supplier_id: string;
+  order_date: string;
+  expected_date: string | null;
+  status: PurchaseOrderStatus;
+  subtotal: number;
+  tax_rate: number;
+  tax_amount: number;
+  shipping_cost: number;
+  total_amount: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+
+  // Supplier Details
+  supplier_name: string | null;
+  supplier_code: string | null;
+  supplier_email: string | null;
+  supplier_phone: string | null;
+  supplier_city: string | null;
+  supplier_country: string | null;
+  supplier_status: 'active' | 'inactive' | null;
+
+  // Line Item Aggregates
+  total_items_count: number;
+  total_ordered_qty: number;
+  total_received_qty: number;
+  fulfillment_percentage: number;
+  is_fully_received: boolean;
+
+  // Goods Receipts Aggregates
+  receipts_count: number;
+  last_receipt_date: string | null;
+
+  // Invoices & Payment Aggregates
+  invoices_count: number;
+  total_invoiced_amount: number;
+  total_paid_amount: number;
+  outstanding_balance: number;
+  payment_status: 'unbilled' | 'unpaid' | 'partially_paid' | 'paid';
+}
+
