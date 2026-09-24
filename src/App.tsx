@@ -7,6 +7,7 @@ import { PurchaseOrders } from '@/pages/PurchaseOrders';
 import { GoodsReceipts } from '@/pages/GoodsReceipts';
 import { Invoices } from '@/pages/Invoices';
 import { Reports } from '@/pages/Reports';
+import { Settings } from '@/pages/Settings';
 import { LoginPage } from '@/pages/LoginPage';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -18,10 +19,11 @@ const pageTitles: Record<PageKey, { title: string; subtitle: string }> = {
   'goods-receipts': { title: 'Goods Receipts', subtitle: 'Record received goods' },
   invoices: { title: 'Invoices', subtitle: 'Supplier invoices and payments' },
   reports: { title: 'Reports', subtitle: 'Analytics and insights' },
+  settings: { title: 'Profile & Settings', subtitle: 'User account details and role permissions' },
 };
 
 function AppContent() {
-  const { session, loading, profile } = useAuth();
+  const { session, loading } = useAuth();
   const [page, setPage] = useState<PageKey>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -51,6 +53,8 @@ function AppContent() {
         return <Invoices />;
       case 'reports':
         return <Reports />;
+      case 'settings':
+        return <Settings />;
     }
   };
 

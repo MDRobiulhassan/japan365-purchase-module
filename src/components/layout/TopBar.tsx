@@ -201,15 +201,19 @@ export function TopBar({ title, subtitle, onToggleSidebar, sidebarCollapsed, onN
       </div>
 
       {/* User */}
-      <div className="flex items-center gap-2.5 border-l border-slate-200 pl-4">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 text-sm font-semibold text-white">
+      <button
+        onClick={() => onNavigate('settings')}
+        className="flex items-center gap-2.5 border-l border-slate-200 pl-4 hover:opacity-80 transition-opacity focus:outline-none"
+        title="View Profile & Settings"
+      >
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 text-sm font-semibold text-white shadow-sm">
           {initials}
         </div>
-        <div className="hidden sm:block">
+        <div className="hidden sm:block text-left">
           <p className="text-sm font-medium text-slate-800 leading-tight">{profile?.full_name ?? 'User'}</p>
           <p className="text-xs text-slate-500 leading-tight capitalize">{profile?.role ?? 'staff'}</p>
         </div>
-      </div>
+      </button>
     </header>
   );
 }

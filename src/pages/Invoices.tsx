@@ -7,15 +7,17 @@ import {
   Pencil,
   Trash2,
   DollarSign,
+  Printer,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Badge, statusColor, statusLabel } from '@/components/ui/Badge';
-import { Input, Textarea, Select } from '@/components/ui/Input';
+import { Input, Textarea, Select, CurrencyInput } from '@/components/ui/Input';
 import { DataTable } from '@/components/ui/DataTable';
 import { LoadingSpinner, EmptyState, ErrorState, PageContainer } from '@/components/ui/States';
+import { PrintModal } from '@/components/print/PrintModal';
 import type { PurchaseInvoice, PurchaseOrder, Supplier, InvoiceStatus } from '@/types';
 
 export function Invoices() {
@@ -32,10 +34,12 @@ export function Invoices() {
   const [editing, setEditing] = useState<PurchaseInvoice | null>(null);
   const [viewing, setViewing] = useState<(PurchaseInvoice & { supplier?: Supplier; purchase_order?: PurchaseOrder }) | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseInvoice | null>(null);
+  const [printTarget, setPrintTarget] = useState<(PurchaseInvoice & { supplier?: Supplier; purchase_order?: PurchaseOrder }) | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Form state
   const [form, setForm] = useState({
@@ -69,6 +73,12 @@ export function Invoices() {
     if (err) {
       setError(err.message);
     } else {
+      const today = new Date().toISOString().slice(0, 10);
+      for (const inv of (data as PurchaseInvoice[]) ?? []) {
+        if (inv.status === 'unpaid' && inv.due_date < today) {
+          await supabase.from('purchase_invoices').update({ status: 'overdue' }).eq('id', inv.id);
+        }
+      }
       setInvoices(
         (data as (PurchaseInvoice & { supplier?: Supplier; purchase_order?: PurchaseOrder })[]) ?? []
       );
@@ -117,6 +127,7 @@ export function Invoices() {
       notes: '',
     });
     setFormError(null);
+    setFieldErrors({});
     setModalOpen(true);
   }
 
@@ -134,6 +145,7 @@ export function Invoices() {
       notes: inv.notes ?? '',
     });
     setFormError(null);
+    setFieldErrors({});
     setModalOpen(true);
   }
 
@@ -154,15 +166,40 @@ export function Invoices() {
     }
   }
 
-  async function handleSave() {
+  function validateForm(): boolean {
+    const errors: Record<string, string> = {};
+
     if (!form.invoice_number.trim()) {
-      setFormError('Invoice number is required');
-      return;
+      errors.invoice_number = 'Invoice number is required';
     }
     if (!form.supplier_id) {
-      setFormError('Please select a supplier');
-      return;
+      errors.supplier_id = 'Please select a supplier';
     }
+    if (!form.invoice_date) {
+      errors.invoice_date = 'Invoice date is required';
+    }
+    if (!form.due_date) {
+      errors.due_date = 'Due date is required';
+    }
+
+    const totalVal = parseFloat(form.total_amount) || (parseFloat(form.subtotal) || 0) + (parseFloat(form.tax_amount) || 0);
+    if (totalVal <= 0) {
+      errors.total_amount = 'Total amount must be greater than 0';
+    }
+
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setFormError('Please fix the errors in the form.');
+      return false;
+    }
+
+    setFormError(null);
+    return true;
+  }
+
+  async function handleSave() {
+    if (!validateForm()) return;
+
     const subtotal = parseFloat(form.subtotal) || 0;
     const taxAmount = parseFloat(form.tax_amount) || 0;
     const totalAmount = parseFloat(form.total_amount) || subtotal + taxAmount;
@@ -220,10 +257,17 @@ export function Invoices() {
   async function recordPayment() {
     if (!viewing) return;
     const payAmt = parseFloat(paymentAmount) || 0;
+    const remaining = Number(viewing.total_amount) - Number(viewing.amount_paid);
+
     if (payAmt <= 0) {
-      setFormError('Enter a valid payment amount');
+      setFormError('Enter a valid payment amount greater than 0');
       return;
     }
+    if (payAmt > remaining + 0.01) {
+      setFormError(`Payment cannot exceed the remaining balance of ${formatCurrency(remaining)}`);
+      return;
+    }
+
     setSaving(true);
     setFormError(null);
     try {
@@ -307,7 +351,7 @@ export function Invoices() {
             </div>
             <span className="text-xs font-medium text-slate-500">Outstanding</span>
           </div>
-          <p className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(totalOutstanding)}</p>
+          <p className="mt-2 text-xl font-bold font-mono text-slate-900">{formatCurrency(totalOutstanding)}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2">
@@ -316,7 +360,7 @@ export function Invoices() {
             </div>
             <span className="text-xs font-medium text-slate-500">Overdue</span>
           </div>
-          <p className="mt-2 text-xl font-bold text-red-600">{formatCurrency(totalOverdue)}</p>
+          <p className="mt-2 text-xl font-bold font-mono text-red-600">{formatCurrency(totalOverdue)}</p>
         </div>
       </div>
 
@@ -350,40 +394,48 @@ export function Invoices() {
         <ErrorState message={error} onRetry={load} />
       ) : (
         <DataTable
+          exportFileName="purchase_invoices_summary"
           columns={[
             {
               key: 'invoice_number',
               header: 'Invoice #',
+              exportValue: (i) => i.invoice_number,
               render: (i) => <span className="font-semibold text-slate-800">{i.invoice_number}</span>,
             },
             {
               key: 'supplier',
               header: 'Supplier',
+              exportValue: (i) => i.supplier?.name || 'N/A',
               render: (i) => i.supplier?.name ?? 'N/A',
             },
             {
               key: 'invoice_date',
               header: 'Invoice Date',
+              exportValue: (i) => formatDate(i.invoice_date),
               render: (i) => formatDate(i.invoice_date),
             },
             {
               key: 'due_date',
               header: 'Due Date',
+              exportValue: (i) => formatDate(i.due_date),
               render: (i) => formatDate(i.due_date),
             },
             {
               key: 'total_amount',
               header: 'Total',
-              render: (i) => <span className="font-semibold text-slate-800">{formatCurrency(Number(i.total_amount))}</span>,
+              exportValue: (i) => Number(i.total_amount),
+              render: (i) => <span className="font-semibold font-mono text-slate-800">{formatCurrency(Number(i.total_amount))}</span>,
             },
             {
               key: 'amount_paid',
               header: 'Paid',
-              render: (i) => formatCurrency(Number(i.amount_paid)),
+              exportValue: (i) => Number(i.amount_paid),
+              render: (i) => <span className="font-mono text-slate-700">{formatCurrency(Number(i.amount_paid))}</span>,
             },
             {
               key: 'status',
               header: 'Status',
+              exportValue: (i) => statusLabel(i.status),
               render: (i) => <Badge color={statusColor(i.status)}>{statusLabel(i.status)}</Badge>,
             },
             {
@@ -395,8 +447,16 @@ export function Invoices() {
                   <button
                     onClick={(e) => { e.stopPropagation(); viewInvoice(i); }}
                     className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                    title="View Invoice"
                   >
                     <Eye className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setPrintTarget(i); }}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition-colors"
+                    title="Print Commercial Invoice"
+                  >
+                    <Printer className="h-4 w-4" />
                   </button>
                   {i.status !== 'paid' && (
                     <button
@@ -410,12 +470,14 @@ export function Invoices() {
                   <button
                     onClick={(e) => { e.stopPropagation(); openEdit(i); }}
                     className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600 transition-colors"
+                    title="Edit"
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); setDeleteTarget(i); }}
                     className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                    title="Delete"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -460,6 +522,8 @@ export function Invoices() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
               label="Invoice Number"
+              required
+              error={fieldErrors.invoice_number}
               value={form.invoice_number}
               onChange={(e) => setForm({ ...form, invoice_number: e.target.value })}
               placeholder="INV-2024-001"
@@ -476,6 +540,8 @@ export function Invoices() {
             </Select>
             <Select
               label="Supplier"
+              required
+              error={fieldErrors.supplier_id}
               value={form.supplier_id}
               onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
             >
@@ -487,37 +553,34 @@ export function Invoices() {
             <div />
             <Input
               label="Invoice Date"
+              required
+              error={fieldErrors.invoice_date}
               type="date"
               value={form.invoice_date}
               onChange={(e) => setForm({ ...form, invoice_date: e.target.value })}
             />
             <Input
               label="Due Date"
+              required
+              error={fieldErrors.due_date}
               type="date"
               value={form.due_date}
               onChange={(e) => setForm({ ...form, due_date: e.target.value })}
             />
-            <Input
+            <CurrencyInput
               label="Subtotal"
-              type="number"
-              min="0"
-              step="any"
               value={form.subtotal}
               onChange={(e) => setForm({ ...form, subtotal: e.target.value })}
             />
-            <Input
+            <CurrencyInput
               label="Tax Amount"
-              type="number"
-              min="0"
-              step="any"
               value={form.tax_amount}
               onChange={(e) => setForm({ ...form, tax_amount: e.target.value })}
             />
-            <Input
+            <CurrencyInput
               label="Total Amount"
-              type="number"
-              min="0"
-              step="any"
+              required
+              error={fieldErrors.total_amount}
               value={form.total_amount}
               onChange={(e) => setForm({ ...form, total_amount: e.target.value })}
             />
@@ -540,10 +603,21 @@ export function Invoices() {
         subtitle={viewing?.supplier?.name}
         size="lg"
         footer={
-          viewing && viewing.status !== 'paid' && (
-            <Button onClick={() => openPayment(viewing)}>
-              <DollarSign className="h-4 w-4" /> Record Payment
-            </Button>
+          viewing && (
+            <div className="flex w-full items-center justify-between">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPrintTarget(viewing)}
+              >
+                <Printer className="h-3.5 w-3.5 text-emerald-600" /> Print Invoice
+              </Button>
+              {viewing.status !== 'paid' && (
+                <Button onClick={() => openPayment(viewing)}>
+                  <DollarSign className="h-4 w-4" /> Record Payment
+                </Button>
+              )}
+            </div>
           )
         }
       >
@@ -567,11 +641,11 @@ export function Invoices() {
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-500">Total</p>
-                <p className="text-sm font-semibold text-slate-900">{formatCurrency(Number(viewing.total_amount))}</p>
+                <p className="text-sm font-semibold font-mono text-slate-900">{formatCurrency(Number(viewing.total_amount))}</p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-500">Balance Due</p>
-                <p className="text-sm font-semibold text-red-600">
+                <p className="text-sm font-semibold font-mono text-red-600">
                   {formatCurrency(Number(viewing.total_amount) - Number(viewing.amount_paid))}
                 </p>
               </div>
@@ -581,21 +655,21 @@ export function Invoices() {
               <div className="grid grid-cols-2 divide-x divide-slate-200">
                 <div className="p-4">
                   <p className="text-xs font-medium text-slate-500">Subtotal</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">{formatCurrency(Number(viewing.subtotal))}</p>
+                  <p className="mt-1 text-lg font-semibold font-mono text-slate-900">{formatCurrency(Number(viewing.subtotal))}</p>
                 </div>
                 <div className="p-4">
                   <p className="text-xs font-medium text-slate-500">Tax</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">{formatCurrency(Number(viewing.tax_amount))}</p>
+                  <p className="mt-1 text-lg font-semibold font-mono text-slate-900">{formatCurrency(Number(viewing.tax_amount))}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 divide-x divide-slate-200 border-t border-slate-200">
                 <div className="p-4">
                   <p className="text-xs font-medium text-slate-500">Amount Paid</p>
-                  <p className="mt-1 text-lg font-semibold text-emerald-600">{formatCurrency(Number(viewing.amount_paid))}</p>
+                  <p className="mt-1 text-lg font-semibold font-mono text-emerald-600">{formatCurrency(Number(viewing.amount_paid))}</p>
                 </div>
                 <div className="p-4">
                   <p className="text-xs font-medium text-slate-500">Outstanding</p>
-                  <p className="mt-1 text-lg font-semibold text-red-600">
+                  <p className="mt-1 text-lg font-semibold font-mono text-red-600">
                     {formatCurrency(Number(viewing.total_amount) - Number(viewing.amount_paid))}
                   </p>
                 </div>
@@ -634,15 +708,13 @@ export function Invoices() {
               <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{formError}</div>
             )}
             <div className="rounded-lg bg-slate-50 p-3 space-y-1">
-              <div className="flex justify-between text-sm"><span className="text-slate-500">Total</span><span className="font-medium">{formatCurrency(Number(viewing.total_amount))}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-slate-500">Already Paid</span><span className="font-medium">{formatCurrency(Number(viewing.amount_paid))}</span></div>
-              <div className="flex justify-between text-sm border-t border-slate-200 pt-1"><span className="text-slate-700 font-medium">Remaining</span><span className="font-bold text-red-600">{formatCurrency(Number(viewing.total_amount) - Number(viewing.amount_paid))}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-slate-500">Total</span><span className="font-medium font-mono">{formatCurrency(Number(viewing.total_amount))}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-slate-500">Already Paid</span><span className="font-medium font-mono">{formatCurrency(Number(viewing.amount_paid))}</span></div>
+              <div className="flex justify-between text-sm border-t border-slate-200 pt-1"><span className="text-slate-700 font-medium">Remaining</span><span className="font-bold font-mono text-red-600">{formatCurrency(Number(viewing.total_amount) - Number(viewing.amount_paid))}</span></div>
             </div>
-            <Input
+            <CurrencyInput
               label="Payment Amount"
-              type="number"
-              min="0"
-              step="any"
+              required
               value={paymentAmount}
               onChange={(e) => setPaymentAmount(e.target.value)}
             />
@@ -672,6 +744,16 @@ export function Invoices() {
           <div className="mt-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{formError}</div>
         )}
       </Modal>
+
+      {/* Print Modal */}
+      {printTarget && (
+        <PrintModal
+          type="invoice"
+          open={!!printTarget}
+          onClose={() => setPrintTarget(null)}
+          invoice={printTarget}
+        />
+      )}
     </PageContainer>
   );
 }

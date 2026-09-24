@@ -45,6 +45,7 @@ export function GoodsReceipts() {
   const [deleteTarget, setDeleteTarget] = useState<GoodsReceipt | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Form state
   const [approvedPOs, setApprovedPOs] = useState<
@@ -89,6 +90,7 @@ export function GoodsReceipts() {
 
   async function openCreate() {
     setFormError(null);
+    setFieldErrors({});
     const num = await generateGrnNumber();
     setGrnNumber(num);
     setReceiptDate(new Date().toISOString().slice(0, 10));
@@ -97,7 +99,6 @@ export function GoodsReceipts() {
     setPoItems([]);
     setReceiptItems([]);
 
-    // Load approved/partially_received POs
     const { data: pos } = await supabase
       .from('purchase_orders')
       .select('*, supplier:suppliers(*)')
@@ -141,18 +142,39 @@ export function GoodsReceipts() {
     );
   }
 
-  async function handleSave() {
+  function validateForm(): boolean {
+    const errors: Record<string, string> = {};
+
     if (!selectedPoId) {
-      setFormError('Please select a purchase order');
-      return;
+      errors.po_id = 'Please select a purchase order';
     }
+    if (!receiptDate) {
+      errors.receipt_date = 'Receipt date is required';
+    }
+
     const itemsToReceive = receiptItems.filter(
       (i) => parseFloat(i.quantity_received) > 0
     );
+
     if (itemsToReceive.length === 0) {
-      setFormError('Enter at least one quantity to receive');
-      return;
+      errors.items = 'Enter at least one item quantity to receive (> 0)';
     }
+
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setFormError('Please resolve errors in the form.');
+      return false;
+    }
+
+    setFormError(null);
+    return true;
+  }
+
+  async function handleSave() {
+    if (!validateForm()) return;
+    const itemsToReceive = receiptItems.filter(
+      (i) => parseFloat(i.quantity_received) > 0
+    );
 
     setSaving(true);
     setFormError(null);
@@ -176,7 +198,6 @@ export function GoodsReceipts() {
         .single();
       if (grnErr) throw grnErr;
 
-      // Insert receipt items
       const grnItemRows = itemsToReceive.map((i) => ({
         grn_id: grn.id,
         po_item_id: i.po_item_id,
@@ -189,7 +210,6 @@ export function GoodsReceipts() {
         .insert(grnItemRows);
       if (itemErr) throw itemErr;
 
-      // Update received_quantity on PO items
       for (const item of itemsToReceive) {
         const poItem = poItems.find((p) => p.id === item.po_item_id);
         if (poItem) {
@@ -202,7 +222,6 @@ export function GoodsReceipts() {
         }
       }
 
-      // Update PO status
       const newStatus = allReceived ? 'received' : 'partially_received';
       await supabase
         .from('purchase_orders')
@@ -234,7 +253,6 @@ export function GoodsReceipts() {
     if (!deleteTarget) return;
     setSaving(true);
     try {
-      // Restore received quantities on PO items
       const { data: grnItems } = await supabase
         .from('goods_receipt_items')
         .select('*')
@@ -253,12 +271,10 @@ export function GoodsReceipts() {
             .eq('id', gi.po_item_id);
         }
       }
-      // Restore PO status
       await supabase
         .from('purchase_orders')
         .update({ status: 'approved', updated_at: new Date().toISOString() })
         .eq('id', deleteTarget.po_id);
-      // Delete receipt
       await supabase.from('goods_receipts').delete().eq('id', deleteTarget.id);
       setDeleteTarget(null);
       await load();
@@ -299,30 +315,36 @@ export function GoodsReceipts() {
         <ErrorState message={error} onRetry={load} />
       ) : (
         <DataTable
+          exportFileName="goods_receipts_summary"
           columns={[
             {
               key: 'grn_number',
               header: 'GRN Number',
+              exportValue: (r) => r.grn_number,
               render: (r) => <span className="font-semibold text-slate-800">{r.grn_number}</span>,
             },
             {
               key: 'po',
               header: 'PO Number',
+              exportValue: (r) => r.purchase_order?.po_number || 'N/A',
               render: (r) => r.purchase_order?.po_number ?? 'N/A',
             },
             {
               key: 'supplier',
               header: 'Supplier',
+              exportValue: (r) => r.supplier?.name || 'N/A',
               render: (r) => r.supplier?.name ?? 'N/A',
             },
             {
               key: 'receipt_date',
               header: 'Receipt Date',
+              exportValue: (r) => formatDate(r.receipt_date),
               render: (r) => formatDate(r.receipt_date),
             },
             {
               key: 'status',
               header: 'Status',
+              exportValue: (r) => statusLabel(r.status),
               render: (r) => <Badge color={statusColor(r.status)}>{statusLabel(r.status)}</Badge>,
             },
             {
@@ -382,7 +404,13 @@ export function GoodsReceipts() {
         )}
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Select label="Purchase Order" value={selectedPoId} onChange={(e) => onPoSelect(e.target.value)}>
+            <Select
+              label="Purchase Order"
+              required
+              error={fieldErrors.po_id}
+              value={selectedPoId}
+              onChange={(e) => onPoSelect(e.target.value)}
+            >
               <option value="">Select approved PO...</option>
               {approvedPOs.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -392,6 +420,8 @@ export function GoodsReceipts() {
             </Select>
             <Input
               label="Receipt Date"
+              required
+              error={fieldErrors.receipt_date}
               type="date"
               value={receiptDate}
               onChange={(e) => setReceiptDate(e.target.value)}
@@ -399,37 +429,42 @@ export function GoodsReceipts() {
           </div>
 
           {selectedPoId && receiptItems.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-20">Ordered</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">Received</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-28">Qty to Receive</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {receiptItems.map((item, idx) => (
-                    <tr key={item.po_item_id}>
-                      <td className="px-3 py-2 text-slate-800">{item.description}</td>
-                      <td className="px-3 py-2 text-right text-slate-600">{item.ordered}</td>
-                      <td className="px-3 py-2 text-right text-slate-600">{item.alreadyReceived}</td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          max={item.ordered - item.alreadyReceived}
-                          step="any"
-                          value={item.quantity_received}
-                          onChange={(e) => updateReceiptQty(idx, e.target.value)}
-                          className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm text-right focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
-                        />
-                      </td>
+            <div>
+              {fieldErrors.items && (
+                <p className="mb-2 text-xs font-medium text-red-500">{fieldErrors.items}</p>
+              )}
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-20">Ordered</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">Received</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-32">Qty to Receive *</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {receiptItems.map((item, idx) => (
+                      <tr key={item.po_item_id}>
+                        <td className="px-3 py-2 text-slate-800">{item.description}</td>
+                        <td className="px-3 py-2 text-right text-slate-600">{item.ordered}</td>
+                        <td className="px-3 py-2 text-right text-slate-600">{item.alreadyReceived}</td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max={item.ordered - item.alreadyReceived}
+                            step="any"
+                            value={item.quantity_received}
+                            onChange={(e) => updateReceiptQty(idx, e.target.value)}
+                            className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm font-mono text-right focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -475,7 +510,7 @@ export function GoodsReceipts() {
                   {viewItems.map((item) => (
                     <tr key={item.id}>
                       <td className="px-4 py-2.5 text-slate-800">{item.description}</td>
-                      <td className="px-4 py-2.5 text-right font-medium text-slate-700">{Number(item.quantity_received)}</td>
+                      <td className="px-4 py-2.5 text-right font-medium font-mono text-slate-700">{Number(item.quantity_received)}</td>
                       <td className="px-4 py-2.5 text-slate-500">{item.unit}</td>
                     </tr>
                   ))}
