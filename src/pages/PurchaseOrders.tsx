@@ -375,7 +375,7 @@ export function PurchaseOrders() {
             {
               key: 'supplier',
               header: 'Supplier',
-              render: (o) => o.supplier?.name ?? '—',
+              render: (o) => o.supplier?.name ?? 'N/A',
             },
             {
               key: 'order_date',

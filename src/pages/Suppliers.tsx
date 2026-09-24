@@ -226,17 +226,17 @@ export function Suppliers() {
             {
               key: 'email',
               header: 'Email',
-              render: (s) => s.email || '—',
+              render: (s) => s.email || 'N/A',
             },
             {
               key: 'phone',
               header: 'Phone',
-              render: (s) => s.phone || '—',
+              render: (s) => s.phone || 'N/A',
             },
             {
               key: 'payment_terms',
               header: 'Payment Terms',
-              render: (s) => s.payment_terms || '—',
+              render: (s) => s.payment_terms || 'N/A',
             },
             {
               key: 'status',
@@ -473,7 +473,7 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
       <div className="mt-0.5 text-slate-400">{icon}</div>
       <div>
         <p className="text-xs font-medium text-slate-500">{label}</p>
-        <p className="text-sm text-slate-800">{value || '—'}</p>
+        <p className="text-sm text-slate-800">{value || 'N/A'}</p>
       </div>
     </div>
   );

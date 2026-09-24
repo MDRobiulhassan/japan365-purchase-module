@@ -148,7 +148,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Welcome back, {profile?.full_name?.split(' ')[0] ?? 'User'}</h2>
         <p className="mt-1 text-sm text-slate-500">

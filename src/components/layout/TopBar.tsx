@@ -67,7 +67,7 @@ export function TopBar({ title, subtitle, onToggleSidebar, sidebarCollapsed, onN
         notifs.push({
           id: `po-${po.id}`,
           type: 'pending_approval',
-          title: `${po.po_number} — ${po.status === 'draft' ? 'Draft' : 'Pending Approval'}`,
+          title: `${po.po_number} - ${po.status === 'draft' ? 'Draft' : 'Pending Approval'}`,
           subtitle: po.supplier?.name ?? 'Unknown supplier',
           amount: Number(po.total_amount),
         });
@@ -77,7 +77,7 @@ export function TopBar({ title, subtitle, onToggleSidebar, sidebarCollapsed, onN
         notifs.push({
           id: `inv-${inv.id}`,
           type: 'overdue_invoice',
-          title: `${inv.invoice_number} — Overdue`,
+          title: `${inv.invoice_number} - Overdue`,
           subtitle: `${inv.supplier?.name ?? 'Unknown'} · Due ${formatDate(inv.due_date)}`,
           amount: Number(inv.total_amount) - Number(inv.amount_paid),
         });

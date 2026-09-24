@@ -378,7 +378,7 @@ export function Invoices() {
             {
               key: 'supplier',
               header: 'Supplier',
-              render: (i) => i.supplier?.name ?? '—',
+              render: (i) => i.supplier?.name ?? 'N/A',
             },
             {
               key: 'invoice_date',

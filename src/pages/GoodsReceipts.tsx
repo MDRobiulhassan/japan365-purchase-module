@@ -308,12 +308,12 @@ export function GoodsReceipts() {
             {
               key: 'po',
               header: 'PO Number',
-              render: (r) => r.purchase_order?.po_number ?? '—',
+              render: (r) => r.purchase_order?.po_number ?? 'N/A',
             },
             {
               key: 'supplier',
               header: 'Supplier',
-              render: (r) => r.supplier?.name ?? '—',
+              render: (r) => r.supplier?.name ?? 'N/A',
             },
             {
               key: 'receipt_date',
@@ -386,7 +386,7 @@ export function GoodsReceipts() {
               <option value="">Select approved PO...</option>
               {approvedPOs.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.po_number} — {p.supplier?.name}
+                  {p.po_number} - {p.supplier?.name}
                 </option>
               ))}
             </Select>

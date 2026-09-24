@@ -5,7 +5,7 @@ import {
   PackageCheck,
   Receipt,
   BarChart3,
-  ShoppingBag,
+  Globe2,
   LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -43,18 +43,18 @@ export function Sidebar({ current, onNavigate, collapsed }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-30 flex h-screen flex-col border-r border-slate-200 bg-slate-900 transition-all duration-200',
+        'fixed left-0 top-0 z-30 flex h-screen flex-col border-r border-stone-200 bg-[#1c1917] transition-all duration-200',
         collapsed ? 'w-16' : 'w-60'
       )}
     >
-      <div className="flex h-16 items-center gap-2.5 border-b border-slate-800 px-4">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600">
-          <ShoppingBag className="h-5 w-5 text-white" />
+      <div className="flex h-16 items-center gap-2.5 border-b border-stone-700/50 px-4">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600">
+          <Globe2 className="h-5 w-5 text-white" />
         </div>
         {!collapsed && (
           <div className="overflow-hidden">
-            <p className="text-sm font-semibold text-white leading-tight">Premier ERP</p>
-            <p className="text-xs text-slate-400 leading-tight">Purchase Module</p>
+            <p className="text-sm font-semibold text-white leading-tight">Japan 365</p>
+            <p className="text-xs text-stone-400 leading-tight">Purchase Module</p>
           </div>
         )}
       </div>
@@ -72,8 +72,8 @@ export function Sidebar({ current, onNavigate, collapsed }: SidebarProps) {
                 'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
                 'focus:outline-none',
                 active
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-stone-400 hover:bg-stone-800 hover:text-white'
               )}
             >
               <Icon className="h-5 w-5 shrink-0" />
@@ -83,12 +83,11 @@ export function Sidebar({ current, onNavigate, collapsed }: SidebarProps) {
         })}
       </nav>
 
-      {/* User info + logout */}
-      <div className="border-t border-slate-800 px-2 py-2">
+      <div className="border-t border-stone-700/50 px-2 py-2">
         {!collapsed && (
           <div className="px-2 py-1.5 mb-1">
-            <p className="text-xs font-medium text-slate-300 truncate">{profile?.full_name ?? 'User'}</p>
-            <p className="text-xs text-slate-500 capitalize">{role}</p>
+            <p className="text-xs font-medium text-stone-300 truncate">{profile?.full_name ?? 'User'}</p>
+            <p className="text-xs text-stone-500 capitalize">{role}</p>
           </div>
         )}
         <button
@@ -96,15 +95,12 @@ export function Sidebar({ current, onNavigate, collapsed }: SidebarProps) {
           title="Sign out"
           className={cn(
             'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
-            'text-slate-400 hover:bg-red-900/40 hover:text-red-400 transition-all'
+            'text-stone-400 hover:bg-red-900/30 hover:text-red-400 transition-all'
           )}
         >
           <LogOut className="h-5 w-5 shrink-0" />
           {!collapsed && <span>Sign Out</span>}
         </button>
-        {!collapsed && (
-          <p className="px-2 pt-2 text-xs text-slate-600">Premier ERP v1.0</p>
-        )}
       </div>
     </aside>
   );
