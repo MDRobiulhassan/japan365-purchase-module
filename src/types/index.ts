@@ -141,3 +141,42 @@ export interface POSummaryView {
   payment_status: 'unbilled' | 'unpaid' | 'partially_paid' | 'paid';
 }
 
+export interface SupplierSummaryView {
+  id: string;
+  code: string;
+  name: string;
+  contact_person: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  tax_id: string | null;
+  payment_terms: string | null;
+  status: 'active' | 'inactive';
+  created_at: string;
+  updated_at: string;
+
+  // Aggregated metrics
+  total_orders_count: number;
+  active_orders_count: number;
+  total_spend: number;
+  last_order_date: string | null;
+  total_invoices_count: number;
+  total_invoiced_amount: number;
+  total_paid_amount: number;
+  outstanding_payables: number;
+  total_receipts_count: number;
+}
+
+export interface DashboardMetricsView {
+  total_orders: number;
+  pending_approval_orders: number;
+  active_suppliers: number;
+  total_spend: number;
+  open_invoice_amount: number;
+  overdue_invoices_count: number;
+  partial_receipts_count: number;
+}
+
+

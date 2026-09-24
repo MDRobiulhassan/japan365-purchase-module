@@ -14,6 +14,16 @@ import { Badge, statusColor, statusLabel } from '@/components/ui/Badge';
 import { LoadingSpinner, PageContainer, ErrorState } from '@/components/ui/States';
 import type { PurchaseOrder, PurchaseInvoice, Supplier, GoodsReceipt, POSummaryView } from '@/types';
 
+function getSupplierName(order: POSummaryView | (PurchaseOrder & { supplier?: Supplier })): string {
+  if ('supplier_name' in order && order.supplier_name) {
+    return order.supplier_name;
+  }
+  if ('supplier' in order && order.supplier?.name) {
+    return order.supplier.name;
+  }
+  return 'Unknown';
+}
+
 export function Reports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,15 +76,6 @@ export function Reports() {
   if (loading) return <LoadingSpinner size="lg" />;
   if (error) return <ErrorState message={error} onRetry={loadReports} />;
 
-function getSupplierName(order: POSummaryView | (PurchaseOrder & { supplier?: Supplier })): string {
-  if ('supplier_name' in order && order.supplier_name) {
-    return order.supplier_name;
-  }
-  if ('supplier' in order && order.supplier?.name) {
-    return order.supplier.name;
-  }
-  return 'Unknown';
-}
 
   // Calculations
   const validOrders = orders.filter((o) => o.status !== 'cancelled' && o.status !== 'draft');
