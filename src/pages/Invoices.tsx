@@ -53,6 +53,13 @@ export function Invoices() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    try {
+      // Execute batch overdue sync in database
+      await supabase.rpc('sync_overdue_invoices');
+    } catch {
+      // Graceful fallback if RPC is not available
+    }
+
     let query = supabase
       .from('purchase_invoices')
       .select('*, supplier:suppliers(*), purchase_order:purchase_orders(*)')
@@ -62,35 +69,9 @@ export function Invoices() {
     if (err) {
       setError(err.message);
     } else {
-      // Auto-mark overdue
-      const today = new Date().toISOString().slice(0, 10);
-      for (const inv of (data as PurchaseInvoice[]) ?? []) {
-        if (inv.status === 'unpaid' && inv.due_date < today) {
-          await supabase.from('purchase_invoices').update({ status: 'overdue' }).eq('id', inv.id);
-        }
-      }
-      // Re-fetch if we updated any
-      if ((data as PurchaseInvoice[])?.some((i) => i.status === 'unpaid' && i.due_date < today)) {
-        const { data: refreshed } = await supabase
-          .from('purchase_invoices')
-          .select('*, supplier:suppliers(*), purchase_order:purchase_orders(*)')
-          .order('created_at', { ascending: false });
-        if (statusFilter !== 'all') {
-          setInvoices(
-            ((refreshed as (PurchaseInvoice & { supplier?: Supplier; purchase_order?: PurchaseOrder })[]) ?? []).filter(
-              (i) => i.status === statusFilter
-            )
-          );
-        } else {
-          setInvoices(
-            (refreshed as (PurchaseInvoice & { supplier?: Supplier; purchase_order?: PurchaseOrder })[]) ?? []
-          );
-        }
-      } else {
-        setInvoices(
-          (data as (PurchaseInvoice & { supplier?: Supplier; purchase_order?: PurchaseOrder })[]) ?? []
-        );
-      }
+      setInvoices(
+        (data as (PurchaseInvoice & { supplier?: Supplier; purchase_order?: PurchaseOrder })[]) ?? []
+      );
     }
     setLoading(false);
   }, [statusFilter]);
