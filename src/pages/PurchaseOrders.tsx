@@ -11,6 +11,7 @@ import {
   XCircle,
   Send,
   PackageCheck,
+  Printer,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
@@ -21,9 +22,10 @@ import {
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Badge, statusColor, statusLabel } from '@/components/ui/Badge';
-import { Input, Textarea, Select } from '@/components/ui/Input';
+import { Input, Textarea, Select, CurrencyInput } from '@/components/ui/Input';
 import { DataTable } from '@/components/ui/DataTable';
 import { LoadingSpinner, EmptyState, ErrorState, PageContainer } from '@/components/ui/States';
+import { PrintModal } from '@/components/print/PrintModal';
 import type { PurchaseOrder, PurchaseOrderItem, Supplier, PurchaseOrderStatus } from '@/types';
 
 interface LineItemDraft {
@@ -46,8 +48,13 @@ export function PurchaseOrders() {
   const [viewing, setViewing] = useState<(PurchaseOrder & { supplier?: Supplier }) | null>(null);
   const [viewItems, setViewItems] = useState<PurchaseOrderItem[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseOrder | null>(null);
+  const [printTarget, setPrintTarget] = useState<{
+    order: PurchaseOrder & { supplier?: Supplier };
+    items: PurchaseOrderItem[];
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Form state
   const [form, setForm] = useState<{
@@ -126,6 +133,7 @@ export function PurchaseOrders() {
       { id: crypto.randomUUID(), description: '', quantity: '1', unit: 'pcs', unit_price: '0' },
     ]);
     setFormError(null);
+    setFieldErrors({});
     setModalOpen(true);
   }
 
@@ -156,6 +164,7 @@ export function PurchaseOrders() {
       })) ?? []
     );
     setFormError(null);
+    setFieldErrors({});
     setModalOpen(true);
   }
 
@@ -184,20 +193,40 @@ export function PurchaseOrders() {
   const shippingCost = parseFloat(form.shipping_cost) || 0;
   const totalAmount = subtotal + taxAmount + shippingCost;
 
-  async function handleSave() {
+  function validateForm(): boolean {
+    const errors: Record<string, string> = {};
+
     if (!form.supplier_id) {
-      setFormError('Please select a supplier');
-      return;
+      errors.supplier_id = 'Please select a supplier';
     }
+    if (!form.order_date) {
+      errors.order_date = 'Order date is required';
+    }
+
     if (lineItems.length === 0 || lineItems.every((i) => !i.description.trim())) {
-      setFormError('Add at least one line item with a description');
-      return;
+      errors.lineItems = 'Add at least one line item with a description';
+    } else {
+      const invalidItem = lineItems.find(
+        (i) => i.description.trim() && (isNaN(parseFloat(i.quantity)) || parseFloat(i.quantity) <= 0 || isNaN(parseFloat(i.unit_price)) || parseFloat(i.unit_price) < 0)
+      );
+      if (invalidItem) {
+        errors.lineItems = 'Line item quantity must be > 0 and unit price must be >= 0';
+      }
     }
+
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setFormError('Please fix the highlighted fields in the form.');
+      return false;
+    }
+
+    setFormError(null);
+    return true;
+  }
+
+  async function handleSave() {
+    if (!validateForm()) return;
     const validItems = lineItems.filter((i) => i.description.trim());
-    if (validItems.some((i) => parseFloat(i.quantity) <= 0 || parseFloat(i.unit_price) < 0)) {
-      setFormError('Line items must have valid quantities (>0) and prices (>=0)');
-      return;
-    }
 
     setSaving(true);
     setFormError(null);
@@ -224,7 +253,6 @@ export function PurchaseOrders() {
           .eq('id', editing.id);
         if (err) throw err;
 
-        // Replace line items
         await supabase.from('purchase_order_items').delete().eq('po_id', editing.id);
         const itemRows = validItems.map((i) => ({
           po_id: editing.id,
@@ -277,6 +305,18 @@ export function PurchaseOrders() {
       .eq('po_id', order.id)
       .order('created_at', { ascending: true });
     setViewItems((items as PurchaseOrderItem[]) ?? []);
+  }
+
+  async function handlePrintPO(order: PurchaseOrder & { supplier?: Supplier }) {
+    const { data: items } = await supabase
+      .from('purchase_order_items')
+      .select('*')
+      .eq('po_id', order.id)
+      .order('created_at', { ascending: true });
+    setPrintTarget({
+      order,
+      items: (items as PurchaseOrderItem[]) ?? [],
+    });
   }
 
   async function updateStatus(order: PurchaseOrder, status: PurchaseOrderStatus) {
@@ -366,30 +406,36 @@ export function PurchaseOrders() {
         <ErrorState message={error} onRetry={load} />
       ) : (
         <DataTable
+          exportFileName="purchase_orders_summary"
           columns={[
             {
               key: 'po_number',
               header: 'PO Number',
+              exportValue: (o) => o.po_number,
               render: (o) => <span className="font-semibold text-slate-800">{o.po_number}</span>,
             },
             {
               key: 'supplier',
               header: 'Supplier',
+              exportValue: (o) => o.supplier?.name || 'N/A',
               render: (o) => o.supplier?.name ?? 'N/A',
             },
             {
               key: 'order_date',
               header: 'Order Date',
+              exportValue: (o) => formatDate(o.order_date),
               render: (o) => formatDate(o.order_date),
             },
             {
               key: 'expected_date',
               header: 'Expected',
+              exportValue: (o) => formatDate(o.expected_date),
               render: (o) => formatDate(o.expected_date),
             },
             {
               key: 'total_amount',
               header: 'Total',
+              exportValue: (o) => Number(o.total_amount),
               render: (o) => (
                 <span className="font-semibold text-slate-800">{formatCurrency(Number(o.total_amount))}</span>
               ),
@@ -397,6 +443,7 @@ export function PurchaseOrders() {
             {
               key: 'status',
               header: 'Status',
+              exportValue: (o) => statusLabel(o.status),
               render: (o) => <Badge color={statusColor(o.status)}>{statusLabel(o.status)}</Badge>,
             },
             {
@@ -411,6 +458,13 @@ export function PurchaseOrders() {
                     title="View"
                   >
                     <Eye className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handlePrintPO(o); }}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition-colors"
+                    title="Print Purchase Order"
+                  >
+                    <Printer className="h-4 w-4" />
                   </button>
                   {canEdit(o.status) && (
                     <button
@@ -473,7 +527,13 @@ export function PurchaseOrders() {
         )}
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Select label="Supplier" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
+            <Select
+              label="Supplier"
+              required
+              error={fieldErrors.supplier_id}
+              value={form.supplier_id}
+              onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
+            >
               <option value="">Select supplier...</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
@@ -481,6 +541,8 @@ export function PurchaseOrders() {
             </Select>
             <Input
               label="Order Date"
+              required
+              error={fieldErrors.order_date}
               type="date"
               value={form.order_date}
               onChange={(e) => setForm({ ...form, order_date: e.target.value })}
@@ -496,19 +558,24 @@ export function PurchaseOrders() {
           {/* Line Items */}
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-slate-700">Line Items</h4>
+              <h4 className="text-sm font-semibold text-slate-700">
+                Line Items <span className="text-red-500 font-bold">*</span>
+              </h4>
               <Button size="sm" variant="secondary" onClick={addLineItem}>
                 <Plus className="h-3.5 w-3.5" /> Add Item
               </Button>
             </div>
+            {fieldErrors.lineItems && (
+              <p className="mb-2 text-xs font-medium text-red-500">{fieldErrors.lineItems}</p>
+            )}
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">Qty</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description *</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">Qty *</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-20">Unit</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-28">Unit Price</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-32">Unit Price *</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-28">Total</th>
                     <th className="w-10"></th>
                   </tr>
@@ -528,7 +595,7 @@ export function PurchaseOrders() {
                       <td className="px-3 py-2">
                         <input
                           type="number"
-                          min="0"
+                          min="0.01"
                           step="any"
                           value={item.quantity}
                           onChange={(e) => updateLineItem(item.id, 'quantity', e.target.value)}
@@ -544,16 +611,19 @@ export function PurchaseOrders() {
                         />
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={item.unit_price}
-                          onChange={(e) => updateLineItem(item.id, 'unit_price', e.target.value)}
-                          className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
-                        />
+                        <div className="relative flex items-center">
+                          <span className="absolute left-2 text-xs text-slate-400 font-semibold">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unit_price}
+                            onChange={(e) => updateLineItem(item.id, 'unit_price', e.target.value)}
+                            className="w-full rounded-md border border-slate-200 pl-5 pr-2 py-1.5 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
+                          />
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-right font-medium text-slate-700">
+                      <td className="px-3 py-2 text-right font-medium font-mono text-slate-700">
                         {formatCurrency((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0))}
                       </td>
                       <td className="px-2 py-2">
@@ -597,7 +667,7 @@ export function PurchaseOrders() {
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2.5">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-600">Subtotal</span>
-                <span className="font-medium text-slate-800">{formatCurrency(subtotal)}</span>
+                <span className="font-medium font-mono text-slate-800">{formatCurrency(subtotal)}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
@@ -608,29 +678,25 @@ export function PurchaseOrders() {
                     step="any"
                     value={form.tax_rate}
                     onChange={(e) => setForm({ ...form, tax_rate: e.target.value })}
-                    className="w-16 rounded-md border border-slate-200 px-2 py-1 text-xs text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
+                    className="w-16 rounded-md border border-slate-200 px-2 py-1 text-xs text-center font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
                   />
                   <span className="text-slate-400">%</span>
                 </div>
-                <span className="font-medium text-slate-800">{formatCurrency(taxAmount)}</span>
+                <span className="font-medium font-mono text-slate-800">{formatCurrency(taxAmount)}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-600">Shipping</span>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-slate-800">{formatCurrency(shippingCost)}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
+                  <CurrencyInput
                     value={form.shipping_cost}
                     onChange={(e) => setForm({ ...form, shipping_cost: e.target.value })}
-                    className="w-24 rounded-md border border-slate-200 px-2 py-1 text-xs text-right focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
+                    className="w-28 text-xs py-1"
                   />
                 </div>
               </div>
               <div className="border-t border-slate-300 pt-2.5 flex items-center justify-between">
                 <span className="text-base font-semibold text-slate-900">Total</span>
-                <span className="text-base font-bold text-slate-900">{formatCurrency(totalAmount)}</span>
+                <span className="text-base font-bold font-mono text-slate-900">{formatCurrency(totalAmount)}</span>
               </div>
             </div>
           </div>
@@ -647,10 +713,18 @@ export function PurchaseOrders() {
         footer={
           viewing && (
             <div className="flex w-full items-center justify-between">
-              <div className="text-sm text-slate-500">
-                Total: <span className="font-bold text-slate-900">{formatCurrency(Number(viewing.total_amount))}</span>
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <span>Total:</span>
+                <span className="font-bold font-mono text-slate-900">{formatCurrency(Number(viewing.total_amount))}</span>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => viewing && handlePrintPO(viewing)}
+                >
+                  <Printer className="h-3.5 w-3.5 text-emerald-600" /> Print
+                </Button>
                 {canSubmit(viewing.status) && (
                   <Button size="sm" variant="outline" onClick={() => updateStatus(viewing, 'pending_approval')}>
                     <Send className="h-3.5 w-3.5" /> Submit for Approval
@@ -709,9 +783,9 @@ export function PurchaseOrders() {
                       <td className="px-4 py-2.5 text-slate-800">{item.description}</td>
                       <td className="px-4 py-2.5 text-right text-slate-700">{Number(item.quantity)}</td>
                       <td className="px-4 py-2.5 text-slate-500">{item.unit}</td>
-                      <td className="px-4 py-2.5 text-right text-slate-700">{formatCurrency(Number(item.unit_price))}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-slate-700">{formatCurrency(Number(item.unit_price))}</td>
                       <td className="px-4 py-2.5 text-right text-slate-700">{Number(item.received_quantity)}</td>
-                      <td className="px-4 py-2.5 text-right font-medium text-slate-800">{formatCurrency(Number(item.line_total))}</td>
+                      <td className="px-4 py-2.5 text-right font-medium font-mono text-slate-800">{formatCurrency(Number(item.line_total))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -720,10 +794,10 @@ export function PurchaseOrders() {
 
             <div className="flex justify-end">
               <div className="w-64 space-y-2">
-                <div className="flex justify-between text-sm"><span className="text-slate-600">Subtotal</span><span className="font-medium">{formatCurrency(Number(viewing.subtotal))}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-slate-600">Tax ({viewing.tax_rate}%)</span><span className="font-medium">{formatCurrency(Number(viewing.tax_amount))}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-slate-600">Shipping</span><span className="font-medium">{formatCurrency(Number(viewing.shipping_cost))}</span></div>
-                <div className="border-t border-slate-200 pt-2 flex justify-between text-base font-bold"><span className="text-slate-900">Total</span><span className="text-slate-900">{formatCurrency(Number(viewing.total_amount))}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-600">Subtotal</span><span className="font-medium font-mono">{formatCurrency(Number(viewing.subtotal))}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-600">Tax ({viewing.tax_rate}%)</span><span className="font-medium font-mono">{formatCurrency(Number(viewing.tax_amount))}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-600">Shipping</span><span className="font-medium font-mono">{formatCurrency(Number(viewing.shipping_cost))}</span></div>
+                <div className="border-t border-slate-200 pt-2 flex justify-between text-base font-bold"><span className="text-slate-900">Total</span><span className="text-slate-900 font-mono">{formatCurrency(Number(viewing.total_amount))}</span></div>
               </div>
             </div>
 
@@ -759,6 +833,17 @@ export function PurchaseOrders() {
           <div className="mt-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{formError}</div>
         )}
       </Modal>
+
+      {/* Print Modal */}
+      {printTarget && (
+        <PrintModal
+          type="po"
+          open={!!printTarget}
+          onClose={() => setPrintTarget(null)}
+          order={printTarget.order}
+          items={printTarget.items}
+        />
+      )}
     </PageContainer>
   );
 }

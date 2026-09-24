@@ -7,6 +7,7 @@ import {
   BarChart3,
   Globe2,
   LogOut,
+  User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth, type UserRole } from '@/lib/auth';
@@ -17,7 +18,8 @@ export type PageKey =
   | 'purchase-orders'
   | 'goods-receipts'
   | 'invoices'
-  | 'reports';
+  | 'reports'
+  | 'settings';
 
 interface SidebarProps {
   current: PageKey;
@@ -32,6 +34,7 @@ const navItems: { key: PageKey; label: string; icon: typeof LayoutDashboard; rol
   { key: 'goods-receipts', label: 'Goods Receipts', icon: PackageCheck },
   { key: 'invoices', label: 'Invoices', icon: Receipt },
   { key: 'reports', label: 'Reports', icon: BarChart3, roles: ['admin', 'manager'] },
+  { key: 'settings', label: 'Profile & Settings', icon: User },
 ];
 
 export function Sidebar({ current, onNavigate, collapsed }: SidebarProps) {
@@ -85,10 +88,15 @@ export function Sidebar({ current, onNavigate, collapsed }: SidebarProps) {
 
       <div className="border-t border-stone-700/50 px-2 py-2">
         {!collapsed && (
-          <div className="px-2 py-1.5 mb-1">
-            <p className="text-xs font-medium text-stone-300 truncate">{profile?.full_name ?? 'User'}</p>
+          <button
+            onClick={() => onNavigate('settings')}
+            className="w-full text-left px-2 py-1.5 mb-1 rounded-lg hover:bg-stone-800/80 transition-colors cursor-pointer group"
+          >
+            <p className="text-xs font-medium text-stone-300 group-hover:text-white truncate">
+              {profile?.full_name ?? 'User'}
+            </p>
             <p className="text-xs text-stone-500 capitalize">{role}</p>
-          </div>
+          </button>
         )}
         <button
           onClick={() => signOut()}

@@ -5,7 +5,7 @@ import { formatCurrency, formatDate, generateSupplierCode } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Badge, statusColor, statusLabel } from '@/components/ui/Badge';
-import { Input, Textarea, Select } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
 import { DataTable } from '@/components/ui/DataTable';
 import { LoadingSpinner, EmptyState, ErrorState, PageContainer } from '@/components/ui/States';
 import type { Supplier, PurchaseOrder } from '@/types';
@@ -24,6 +24,7 @@ export function Suppliers() {
   const [form, setForm] = useState<Partial<Supplier>>({});
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,6 +71,7 @@ export function Suppliers() {
       status: 'active',
     });
     setFormError(null);
+    setFieldErrors({});
     setModalOpen(true);
   }
 
@@ -77,18 +79,36 @@ export function Suppliers() {
     setEditing(s);
     setForm({ ...s });
     setFormError(null);
+    setFieldErrors({});
     setModalOpen(true);
   }
 
-  async function handleSave() {
-    if (!form.name?.trim()) {
-      setFormError('Supplier name is required');
-      return;
-    }
+  function validateForm(): boolean {
+    const errors: Record<string, string> = {};
+
     if (!form.code?.trim()) {
-      setFormError('Supplier code is required');
-      return;
+      errors.code = 'Supplier code is required';
     }
+    if (!form.name?.trim()) {
+      errors.name = 'Supplier name is required';
+    }
+    if (form.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      errors.email = 'Please enter a valid email address';
+    }
+
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setFormError('Please fix the errors before saving.');
+      return false;
+    }
+
+    setFormError(null);
+    return true;
+  }
+
+  async function handleSave() {
+    if (!validateForm()) return;
+
     setSaving(true);
     setFormError(null);
     try {
@@ -207,15 +227,18 @@ export function Suppliers() {
         <ErrorState message={error} onRetry={load} />
       ) : (
         <DataTable
+          exportFileName="suppliers_directory"
           columns={[
             {
               key: 'code',
               header: 'Code',
+              exportValue: (s) => s.code,
               render: (s) => <span className="font-medium text-slate-800">{s.code}</span>,
             },
             {
               key: 'name',
               header: 'Supplier',
+              exportValue: (s) => s.name,
               render: (s) => (
                 <div>
                   <p className="font-medium text-slate-800">{s.name}</p>
@@ -226,21 +249,25 @@ export function Suppliers() {
             {
               key: 'email',
               header: 'Email',
+              exportValue: (s) => s.email || '',
               render: (s) => s.email || 'N/A',
             },
             {
               key: 'phone',
               header: 'Phone',
+              exportValue: (s) => s.phone || '',
               render: (s) => s.phone || 'N/A',
             },
             {
               key: 'payment_terms',
               header: 'Payment Terms',
+              exportValue: (s) => s.payment_terms || '',
               render: (s) => s.payment_terms || 'N/A',
             },
             {
               key: 'status',
               header: 'Status',
+              exportValue: (s) => statusLabel(s.status),
               render: (s) => (
                 <Badge color={statusColor(s.status)}>{statusLabel(s.status)}</Badge>
               ),
@@ -311,12 +338,16 @@ export function Suppliers() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input
             label="Supplier Code"
+            required
+            error={fieldErrors.code}
             value={form.code ?? ''}
             onChange={(e) => setForm({ ...form, code: e.target.value })}
             disabled={!!editing}
           />
           <Input
             label="Supplier Name"
+            required
+            error={fieldErrors.name}
             value={form.name ?? ''}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="Acme Corp."
@@ -330,6 +361,7 @@ export function Suppliers() {
           <Input
             label="Email"
             type="email"
+            error={fieldErrors.email}
             value={form.email ?? ''}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             placeholder="contact@acme.com"
