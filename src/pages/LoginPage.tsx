@@ -1,14 +1,12 @@
 import { useState } from 'react';
-import { ShoppingBag, Mail, Lock, User as UserIcon, Eye, EyeOff, Info } from 'lucide-react';
+import { Globe2, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/Button';
 
 export function LoginPage() {
-  const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -18,18 +16,8 @@ export function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      if (mode === 'signin') {
-        const { error } = await signIn(email, password);
-        if (error) setError(error);
-      } else {
-        if (password.length < 6) {
-          setError('Password must be at least 6 characters');
-          setLoading(false);
-          return;
-        }
-        const { error } = await signUp(email, password, fullName);
-        if (error) setError(error);
-      }
+      const { error } = await signIn(email, password);
+      if (error) setError(error);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -38,122 +26,122 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4 py-8">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="mb-8 text-center">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 shadow-lg shadow-blue-600/30">
-            <ShoppingBag className="h-7 w-7 text-white" />
+    <div className="min-h-screen flex bg-slate-950">
+      {/* Left panel — branding */}
+      <div className="hidden lg:flex lg:w-1/2 flex-col justify-between bg-gradient-to-br from-blue-700 via-blue-600 to-cyan-500 p-12">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur">
+            <Globe2 className="h-5 w-5 text-white" />
           </div>
-          <h1 className="mt-4 text-2xl font-bold text-white">Premier ERP</h1>
-          <p className="mt-1 text-sm text-slate-400">Purchase Module</p>
+          <span className="text-lg font-bold text-white">Japan 365</span>
         </div>
+        <div>
+          <h2 className="text-4xl font-bold text-white leading-tight">
+            Procurement.<br />Simplified.
+          </h2>
+          <p className="mt-4 text-blue-100 text-base leading-relaxed max-w-sm">
+            Manage suppliers, purchase orders, goods receipts, and invoices — all in one place.
+          </p>
+          <div className="mt-10 grid grid-cols-3 gap-4">
+            {[['Suppliers', 'Vendor directory'], ['Orders', 'Full lifecycle'], ['Invoices', 'Payment tracking']].map(([title, desc]) => (
+              <div key={title} className="rounded-xl bg-white/10 backdrop-blur p-4">
+                <p className="text-sm font-semibold text-white">{title}</p>
+                <p className="text-xs text-blue-200 mt-0.5">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="text-xs text-blue-200/60">Japan 365 — Purchase Module</p>
+      </div>
 
-        {/* Card */}
-        <div className="rounded-2xl bg-white shadow-2xl">
-          {/* Tabs */}
-          <div className="flex border-b border-slate-200">
-            <button
-              onClick={() => { setMode('signin'); setError(null); }}
-              className={`flex-1 py-3.5 text-sm font-medium transition-colors ${
-                mode === 'signin'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => { setMode('signup'); setError(null); }}
-              className={`flex-1 py-3.5 text-sm font-medium transition-colors ${
-                mode === 'signup'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Sign Up
-            </button>
+      {/* Right panel — login form */}
+      <div className="flex flex-1 items-center justify-center px-6 py-12">
+        <div className="w-full max-w-sm">
+          {/* Mobile logo */}
+          <div className="mb-8 flex flex-col items-center lg:hidden">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 shadow-lg shadow-blue-600/30">
+              <Globe2 className="h-7 w-7 text-white" />
+            </div>
+            <h1 className="mt-4 text-2xl font-bold text-white">Japan 365</h1>
+            <p className="mt-1 text-sm text-slate-400">Purchase Module</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="p-6 space-y-4">
-            {mode === 'signup' && (
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-slate-700">Full Name</label>
-                <div className="relative">
-                  <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <input
-                    type="text"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="John Smith"
-                    className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-colors"
-                  />
-                </div>
-              </div>
-            )}
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-white">Welcome back</h2>
+            <p className="mt-1 text-sm text-slate-400">Sign in to your account to continue</p>
+          </div>
 
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-slate-700">Email</label>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-slate-300">Email address</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@company.com"
-                  className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-colors"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 py-3 pl-10 pr-4 text-sm text-white placeholder:text-slate-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-colors"
                 />
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-slate-700">Password</label>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-slate-300">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-colors"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 py-3 pl-10 pr-11 text-sm text-white placeholder:text-slate-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-colors"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            {mode === 'signup' && (
-              <div className="flex items-start gap-2.5 rounded-lg bg-blue-50 px-4 py-3">
-                <Info className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
-                <p className="text-xs text-blue-700">
-                  New accounts are created with read-only (Staff) access. An admin can promote your role after you sign up.
-                </p>
-              </div>
-            )}
-
             {error && (
-              <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
+              <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
                 {error}
               </div>
             )}
 
-            <Button type="submit" disabled={loading} className="w-full" size="lg">
-              {loading ? 'Please wait...' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+            <Button type="submit" disabled={loading} className="w-full mt-2" size="lg">
+              {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
-        </div>
 
-        <p className="mt-6 text-center text-xs text-slate-500">
-          Premier ERP — Purchase Module v1.0
-        </p>
+          <div className="mt-8 rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-2">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Demo Accounts</p>
+            {[
+              { role: 'Admin', email: 'admin@japan365.com', password: 'Admin2026!', color: 'text-blue-400' },
+              { role: 'Manager', email: 'manager@japan365.com', password: 'Manager2026!', color: 'text-emerald-400' },
+              { role: 'Staff', email: 'staff@japan365.com', password: 'Staff2026!', color: 'text-amber-400' },
+            ].map((acc) => (
+              <button
+                key={acc.role}
+                type="button"
+                onClick={() => { setEmail(acc.email); setPassword(acc.password); setError(null); }}
+                className="w-full flex items-center justify-between rounded-lg px-3 py-2 hover:bg-slate-800 transition-colors text-left"
+              >
+                <div>
+                  <span className={`text-xs font-semibold ${acc.color}`}>{acc.role}</span>
+                  <p className="text-xs text-slate-500 mt-0.5">{acc.email}</p>
+                </div>
+                <span className="text-xs text-slate-600 font-mono">{acc.password}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
