@@ -153,6 +153,11 @@ src/
 
 ## Contributors
 
-1. **Samin Osman (1042)** - Database Design
-2. **Robiul Hassan (1043)** - Backend Development
-3. **Mahafujul Alam (1066)** - Frontend Development
+### Samin Osman (1042) — Database Design
+Designed the full PostgreSQL schema in Supabase, including all seven tables (profiles, suppliers, purchase_orders, purchase_order_items, goods_receipts, goods_receipt_items, purchase_invoices), their relationships, and constraints. Implemented Row Level Security policies on every table with role-based enforcement via a SECURITY DEFINER function. Created database views for dashboard metrics, performance indexes, and automated triggers for PO status updates and overdue invoice syncing.
+
+### Robiul Hassan (1043) — Backend Development
+Built the Supabase backend layer: auth context with session management, auto-numbering RPC functions for PO, GRN, supplier, and invoice codes, and client-side data access utilities. Integrated role-based access control so admins can delete, managers can create/edit, and staff has read-only access. Set up the Supabase client singleton and wrote the server-side logic for payment recording and invoice status transitions.
+
+### Mahafujul Alam (1066) — Frontend Development
+Developed the complete React user interface: dashboard with KPI cards and recent activity, supplier directory, purchase order creation with multi-line items and live total calculation, goods receipt tracking, invoice management with payment recording, and the analytics reports page with the monthly spend chart. Designed the responsive layout, navigation sidebar, user dropdown, notification panel, print/PDF export system, and the settings page with password change and permission controls.
