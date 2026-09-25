@@ -6,8 +6,6 @@ import {
   Receipt,
   BarChart3,
   Globe2,
-  LogOut,
-  User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth, type UserRole } from '@/lib/auth';
@@ -34,11 +32,10 @@ const navItems: { key: PageKey; label: string; icon: typeof LayoutDashboard; rol
   { key: 'goods-receipts', label: 'Goods Receipts', icon: PackageCheck },
   { key: 'invoices', label: 'Invoices', icon: Receipt },
   { key: 'reports', label: 'Reports', icon: BarChart3, roles: ['admin', 'manager'] },
-  { key: 'settings', label: 'Profile & Settings', icon: User },
 ];
 
 export function Sidebar({ current, onNavigate, collapsed }: SidebarProps) {
-  const { profile, signOut } = useAuth();
+  const { profile } = useAuth();
   const role = profile?.role ?? 'staff';
 
   const visibleItems = navItems.filter((item) => !item.roles || item.roles.includes(role));
@@ -86,30 +83,12 @@ export function Sidebar({ current, onNavigate, collapsed }: SidebarProps) {
         })}
       </nav>
 
-      <div className="border-t border-stone-700/50 px-2 py-2">
-        {!collapsed && (
-          <button
-            onClick={() => onNavigate('settings')}
-            className="w-full text-left px-2 py-1.5 mb-1 rounded-lg hover:bg-stone-800/80 transition-colors cursor-pointer group"
-          >
-            <p className="text-xs font-medium text-stone-300 group-hover:text-white truncate">
-              {profile?.full_name ?? 'User'}
-            </p>
-            <p className="text-xs text-stone-500 capitalize">{role}</p>
-          </button>
-        )}
-        <button
-          onClick={() => signOut()}
-          title="Sign out"
-          className={cn(
-            'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
-            'text-stone-400 hover:bg-red-900/30 hover:text-red-400 transition-all'
-          )}
-        >
-          <LogOut className="h-5 w-5 shrink-0" />
-          {!collapsed && <span>Sign Out</span>}
-        </button>
-      </div>
+      {!collapsed && (
+        <div className="border-t border-stone-700/50 px-4 py-3">
+          <p className="text-xs font-medium text-stone-300 truncate">{profile?.full_name ?? 'User'}</p>
+          <p className="text-xs text-stone-500 capitalize">{role}</p>
+        </div>
+      )}
     </aside>
   );
 }

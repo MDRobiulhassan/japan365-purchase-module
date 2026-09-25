@@ -192,26 +192,11 @@ export function Reports() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Monthly Spend Chart */}
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-800 mb-4">Monthly Procurement Spend</h3>
-          <div className="flex items-end justify-between gap-3 h-48">
-            {monthlyData.map((m) => (
-              <div key={m.month} className="flex flex-1 flex-col items-center gap-2">
-                <div className="flex w-full flex-1 items-end">
-                  <div
-                    className="w-full rounded-t-md bg-gradient-to-t from-blue-600 to-cyan-400 transition-all hover:from-blue-700 hover:to-cyan-500 relative group"
-                    style={{
-                      height: `${Math.max((m.spend / maxMonthlySpend) * 100, 2)}%`,
-                    }}
-                  >
-                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                      {formatCurrency(m.spend)}
-                    </div>
-                  </div>
-                </div>
-                <span className="text-xs text-slate-500">{m.month}</span>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-slate-800">Monthly Procurement Spend</h3>
+            <span className="text-xs text-slate-400">Last 6 months</span>
           </div>
+          <MonthlySpendChart data={monthlyData} maxSpend={maxMonthlySpend} />
         </div>
 
         {/* PO Status Distribution */}
@@ -317,5 +302,106 @@ export function Reports() {
         </div>
       </div>
     </PageContainer>
+  );
+}
+
+function MonthlySpendChart({ data, maxSpend }: { data: { month: string; spend: number }[]; maxSpend: number }) {
+  const hasData = data.some((d) => d.spend > 0);
+  const chartData = hasData ? data : [
+    { month: 'Apr', spend: 12500 },
+    { month: 'May', spend: 18900 },
+    { month: 'Jun', spend: 8700 },
+    { month: 'Jul', spend: 22300 },
+    { month: 'Aug', spend: 15600 },
+    { month: 'Sep', spend: 31000 },
+  ];
+  const chartMax = hasData ? maxSpend : Math.max(...chartData.map((d) => d.spend), 1);
+
+  const barWidth = 100 / chartData.length;
+  const barGap = barWidth * 0.3;
+  const actualBarWidth = barWidth - barGap;
+
+  const points = chartData.map((d, i) => {
+    const x = i * barWidth + barWidth / 2;
+    const y = 100 - (d.spend / chartMax) * 85 - 5;
+    return { x, y, ...d };
+  });
+
+  const linePath = points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
+    .join(' ');
+
+  const areaPath = `${linePath} L ${points[points.length - 1].x} 100 L ${points[0].x} 100 Z`;
+
+  return (
+    <div>
+      {!hasData && (
+        <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-1.5 mb-3">
+          Showing sample data. Create purchase orders to see real trends.
+        </p>
+      )}
+      <div className="relative">
+        <svg viewBox="0 0 100 105" className="w-full h-56" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="barGrad" x1="0" y1="1" x2="0" y2="0">
+              <stop offset="0%" stopColor="#2563eb" />
+              <stop offset="100%" stopColor="#22d3ee" />
+            </linearGradient>
+            <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+
+          {/* Grid lines */}
+          {[20, 40, 60, 80].map((y) => (
+            <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="#f1f5f9" strokeWidth="0.3" />
+          ))}
+
+          {/* Area under line */}
+          <path d={areaPath} fill="url(#areaGrad)" />
+
+          {/* Bars */}
+          {points.map((p, i) => (
+            <rect
+              key={i}
+              x={p.x - actualBarWidth / 2}
+              y={p.y}
+              width={actualBarWidth}
+              height={100 - p.y}
+              rx="1"
+              fill="url(#barGrad)"
+              opacity="0.7"
+            />
+          ))}
+
+          {/* Trend line */}
+          <path d={linePath} fill="none" stroke="#1e40af" strokeWidth="0.5" strokeLinejoin="round" strokeLinecap="round" />
+
+          {/* Data points */}
+          {points.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r="0.8" fill="#1e40af" stroke="white" strokeWidth="0.3" />
+          ))}
+        </svg>
+
+        {/* Value labels overlay */}
+        <div className="absolute inset-0 flex justify-between pointer-events-none">
+          {chartData.map((d, i) => (
+            <div key={i} className="flex flex-1 flex-col items-center justify-end">
+              <span className="text-[10px] font-semibold text-slate-600 mb-1">
+                {d.spend > 0 ? formatCurrency(d.spend).replace('.00', '') : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Month labels */}
+        <div className="flex justify-between mt-1">
+          {chartData.map((d, i) => (
+            <span key={i} className="flex-1 text-center text-xs text-slate-500">{d.month}</span>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

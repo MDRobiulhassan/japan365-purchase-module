@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar, type PageKey } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { Dashboard } from '@/pages/Dashboard';
@@ -22,10 +22,29 @@ const pageTitles: Record<PageKey, { title: string; subtitle: string }> = {
   settings: { title: 'Profile & Settings', subtitle: 'User account details and role permissions' },
 };
 
+const STORAGE_KEY = 'japan365_current_page';
+
 function AppContent() {
   const { session, loading } = useAuth();
-  const [page, setPage] = useState<PageKey>('dashboard');
+  const [page, setPage] = useState<PageKey>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY) as PageKey | null;
+      if (saved && saved in pageTitles) return saved;
+    } catch {
+      // localStorage not available
+    }
+    return 'dashboard';
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, page);
+    } catch {
+      // ignore
+    }
+  }, [page]);
 
   if (loading) {
     return (
@@ -42,7 +61,7 @@ function AppContent() {
   const renderPage = () => {
     switch (page) {
       case 'dashboard':
-        return <Dashboard onNavigate={setPage} />;
+        return <Dashboard onNavigate={setPage} searchQuery={searchQuery} />;
       case 'suppliers':
         return <Suppliers />;
       case 'purchase-orders':
@@ -70,8 +89,9 @@ function AppContent() {
           onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
           sidebarCollapsed={sidebarCollapsed}
           onNavigate={setPage}
+          onSearch={setSearchQuery}
         />
-        <main className="min-h-[calc(100vh-4rem)]">
+        <main className="min-h-[calc(100vh-4rem)]" key={page}>
           {renderPage()}
         </main>
       </div>

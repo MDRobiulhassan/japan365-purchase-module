@@ -1,4 +1,5 @@
-import { Printer, X } from 'lucide-react';
+import { useRef, useCallback } from 'react';
+import { Printer, X, Download } from 'lucide-react';
 import type { PurchaseOrder, PurchaseOrderItem, PurchaseInvoice, Supplier } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
@@ -12,19 +13,50 @@ interface PrintModalProps {
 }
 
 export function PrintModal({ open, onClose, type, order, items, invoice }: PrintModalProps) {
-  if (!open) return null;
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const handlePrint = () => {
-    const printContent = type === 'po' ? generatePOHtml(order!, items ?? []) : generateInvoiceHtml(invoice!);
-    const w = window.open('', '_blank', 'width=900,height=700');
-    if (!w) return;
-    w.document.write(printContent);
-    w.document.close();
-    w.focus();
-    setTimeout(() => {
-      w.print();
-    }, 300);
-  };
+  const getHtml = useCallback(() => {
+    if (type === 'po' && order) return generatePOHtml(order, items ?? []);
+    if (type === 'invoice' && invoice) return generateInvoiceHtml(invoice);
+    return '';
+  }, [type, order, items, invoice]);
+
+  const writeContent = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+    doc.open();
+    doc.write(getHtml());
+    doc.close();
+  }, [getHtml]);
+
+  const handlePrint = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe?.contentWindow) return;
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    const html = getHtml();
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const fileName = type === 'po' && order
+      ? `${order.po_number}.html`
+      : type === 'invoice' && invoice
+        ? `${invoice.invoice_number}.html`
+        : 'document.html';
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [getHtml, type, order, invoice]);
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 pt-8 sm:p-6 sm:pt-12">
@@ -61,13 +93,30 @@ export function PrintModal({ open, onClose, type, order, items, invoice }: Print
             Cancel
           </button>
           <button
+            onClick={handleDownload}
+            className="flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            Save HTML
+          </button>
+          <button
             onClick={handlePrint}
             className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors"
           >
             <Printer className="h-4 w-4" />
-            Print
+            Print / Save PDF
           </button>
         </div>
+
+        {/* Hidden iframe for printing */}
+        <iframe
+          ref={iframeRef}
+          referrerPolicy="no-referrer-when-downgrade"
+          onLoad={writeContent}
+          title="print-frame"
+          className="fixed left-0 top-0 h-0 w-0 border-0 opacity-0 pointer-events-none"
+          aria-hidden
+        />
       </div>
     </div>
   );
@@ -256,7 +305,7 @@ function generatePOHtml(order: PurchaseOrder & { supplier?: Supplier }, items: P
   return `<!DOCTYPE html><html><head><title>${order.po_number}</title>
   <style>
     * { font-family: -apple-system, system-ui, sans-serif; box-sizing: border-box; }
-    body { padding: 40px; color: #1e293b; font-size: 14px; }
+    body { padding: 40px; color: #1e293b; font-size: 14px; margin: 0; }
     .header { display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 24px; }
     .company { font-size: 22px; font-weight: 700; }
     .doc-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; }
@@ -270,6 +319,8 @@ function generatePOHtml(order: PurchaseOrder & { supplier?: Supplier }, items: P
     .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
     .totals .grand { border-top: 2px solid #e2e8f0; padding-top: 8px; margin-top: 4px; font-size: 16px; font-weight: 700; }
     .notes { background: #f8fafc; padding: 12px; border-radius: 8px; margin-top: 16px; }
+    @page { margin: 15mm; }
+    @media print { body { padding: 0; } }
   </style></head><body>
     <div class="header">
       <div><div class="company">Japan 365</div><div style="color:#64748b;font-size:12px">Purchase Module</div></div>
@@ -307,7 +358,7 @@ function generateInvoiceHtml(invoice: PurchaseInvoice & { supplier?: Supplier; p
   return `<!DOCTYPE html><html><head><title>${invoice.invoice_number}</title>
   <style>
     * { font-family: -apple-system, system-ui, sans-serif; box-sizing: border-box; }
-    body { padding: 40px; color: #1e293b; font-size: 14px; }
+    body { padding: 40px; color: #1e293b; font-size: 14px; margin: 0; }
     .header { display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 24px; }
     .company { font-size: 22px; font-weight: 700; }
     .doc-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; }
@@ -324,6 +375,8 @@ function generateInvoiceHtml(invoice: PurchaseInvoice & { supplier?: Supplier; p
     .balance { color: #dc2626; font-weight: 700; }
     .po-link { background: #f8fafc; padding: 10px 12px; border-radius: 8px; margin-bottom: 20px; }
     .notes { background: #f8fafc; padding: 12px; border-radius: 8px; margin-top: 16px; }
+    @page { margin: 15mm; }
+    @media print { body { padding: 0; } }
   </style></head><body>
     <div class="header">
       <div><div class="company">Japan 365</div><div style="color:#64748b;font-size:12px">Purchase Module</div></div>

@@ -10,7 +10,7 @@ import {
   Printer,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, generateInvoiceNumber } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Badge, statusColor, statusLabel } from '@/components/ui/Badge';
@@ -113,10 +113,11 @@ export function Invoices() {
     );
   });
 
-  function openCreate() {
+  async function openCreate() {
     setEditing(null);
+    const autoNumber = await generateInvoiceNumber();
     setForm({
-      invoice_number: '',
+      invoice_number: autoNumber,
       supplier_id: '',
       po_id: '',
       invoice_date: new Date().toISOString().slice(0, 10),
@@ -527,6 +528,7 @@ export function Invoices() {
               value={form.invoice_number}
               onChange={(e) => setForm({ ...form, invoice_number: e.target.value })}
               placeholder="INV-2024-001"
+              hint={editing ? undefined : 'Auto-generated'}
             />
             <Select
               label="Link to PO (optional)"

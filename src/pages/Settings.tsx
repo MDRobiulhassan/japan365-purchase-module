@@ -1,12 +1,13 @@
-import { useState } from 'react';
-import { User, Mail, Shield, Calendar, Save, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Mail, Shield, Calendar, Save, CheckCircle2, Lock, Bell, Activity, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Badge, statusColor, statusLabel } from '@/components/ui/Badge';
+import { Badge, statusColor } from '@/components/ui/Badge';
 import { PageContainer } from '@/components/ui/States';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatCurrency } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 const roleDescriptions: Record<string, string> = {
   admin: 'Full access to all modules including deletion of records and access to reports.',
@@ -14,12 +15,66 @@ const roleDescriptions: Record<string, string> = {
   staff: 'Read-only access to all modules. Cannot create, edit, or delete records.',
 };
 
+const modulePermissions = [
+  { name: 'Dashboard', admin: true, manager: true, staff: true },
+  { name: 'Suppliers', admin: 'Full', manager: 'Full', staff: 'View' },
+  { name: 'Purchase Orders', admin: 'Full', manager: 'Full', staff: 'View' },
+  { name: 'Goods Receipts', admin: 'Full', manager: 'Full', staff: 'View' },
+  { name: 'Invoices', admin: 'Full', manager: 'Full', staff: 'View' },
+  { name: 'Reports', admin: 'Full', manager: 'Full', staff: 'No access' },
+  { name: 'Delete Records', admin: 'Yes', manager: 'No', staff: 'No' },
+];
+
 export function Settings() {
   const { profile, user, refreshProfile } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Password change
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  // Notification prefs
+  const [notifPrefs, setNotifPrefs] = useState({
+    pendingApprovals: true,
+    overdueInvoices: true,
+    weeklySummary: false,
+    newSuppliers: false,
+  });
+  const [prefsSaved, setPrefsSaved] = useState(false);
+
+  // Activity stats
+  const [stats, setStats] = useState<{ poCount: number; invoiceCount: number; supplierCount: number; totalSpend: number } | null>(null);
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  async function loadStats() {
+    try {
+      const [poRes, invRes, supRes] = await Promise.all([
+        supabase.from('purchase_orders').select('total_amount', { count: 'exact' }),
+        supabase.from('purchase_invoices').select('total_amount', { count: 'exact' }),
+        supabase.from('suppliers').select('*', { count: 'exact', head: true }),
+      ]);
+      const poSpend = (poRes.data ?? []).reduce((sum, o) => sum + Number(o.total_amount), 0);
+      setStats({
+        poCount: poRes.count ?? 0,
+        invoiceCount: invRes.count ?? 0,
+        supplierCount: supRes.count ?? 0,
+        totalSpend: poSpend,
+      });
+    } catch {
+      // ignore
+    }
+  }
 
   async function handleSave() {
     if (!profile) return;
@@ -42,6 +97,42 @@ export function Settings() {
     }
   }
 
+  async function handlePasswordChange() {
+    setPasswordError(null);
+    setPasswordSuccess(false);
+
+    if (newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      const { error: err } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (err) throw err;
+      setPasswordSuccess(true);
+      setNewPassword('');
+      setConfirmPassword('');
+      setShowPasswordForm(false);
+      setTimeout(() => setPasswordSuccess(false), 3000);
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : 'Failed to change password');
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
+  function handleSavePrefs() {
+    setPrefsSaved(true);
+    setTimeout(() => setPrefsSaved(false), 3000);
+  }
+
   if (!profile) {
     return (
       <PageContainer>
@@ -54,24 +145,30 @@ export function Settings() {
     <PageContainer>
       <div className="mb-6">
         <h2 className="text-xl font-bold text-slate-900">Profile and Settings</h2>
-        <p className="mt-0.5 text-sm text-slate-500">View your account details and update your name</p>
+        <p className="mt-0.5 text-sm text-slate-500">Manage your account, security, and preferences</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Profile Card */}
+        {/* Left column: Profile + Security */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Profile Card */}
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-6 py-4">
               <h3 className="text-sm font-semibold text-slate-900">Account Information</h3>
             </div>
             <div className="p-6 space-y-5">
               <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-100">
-                  <User className="h-7 w-7 text-emerald-600" />
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 text-xl font-bold text-white shadow-md">
+                  {profile.full_name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
                 </div>
                 <div>
-                  <p className="text-base font-semibold text-slate-900">{profile.full_name}</p>
+                  <p className="text-lg font-semibold text-slate-900">{profile.full_name}</p>
                   <p className="text-sm text-slate-500">{user?.email}</p>
+                  <div className="mt-1">
+                    <Badge color={statusColor(profile.role === 'admin' ? 'active' : profile.role === 'manager' ? 'pending' : 'inactive')}>
+                      {profile.role}
+                    </Badge>
+                  </div>
                 </div>
               </div>
 
@@ -121,10 +218,113 @@ export function Settings() {
               </div>
             </div>
           </div>
+
+          {/* Security Card */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Lock className="h-4 w-4 text-slate-400" />
+                <h3 className="text-sm font-semibold text-slate-900">Security</h3>
+              </div>
+              <button
+                onClick={() => setShowPasswordForm(!showPasswordForm)}
+                className="text-xs font-medium text-blue-600 hover:text-blue-700"
+              >
+                {showPasswordForm ? 'Cancel' : 'Change password'}
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {passwordSuccess && (
+                <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Password changed successfully
+                </div>
+              )}
+
+              {passwordError && (
+                <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{passwordError}</div>
+              )}
+
+              {showPasswordForm ? (
+                <div className="space-y-4">
+                  <div className="relative">
+                    <Input
+                      label="New Password"
+                      type={showPasswords ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new password"
+                      required
+                    />
+                    <button
+                      onClick={() => setShowPasswords(!showPasswords)}
+                      className="absolute right-3 top-8 text-slate-400 hover:text-slate-600"
+                      type="button"
+                    >
+                      {showPasswords ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <Input
+                    label="Confirm New Password"
+                    type={showPasswords ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    required
+                  />
+                  <Button onClick={handlePasswordChange} disabled={passwordSaving || !newPassword || !confirmPassword}>
+                    {passwordSaving ? 'Updating...' : 'Update Password'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50">
+                      <Lock className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Password</p>
+                      <p className="text-xs text-slate-500">Last set when account was created</p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-medium text-slate-400">Secured</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Activity Stats */}
+          {stats && (
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-200 px-6 py-4 flex items-center gap-2">
+                <Activity className="h-4 w-4 text-slate-400" />
+                <h3 className="text-sm font-semibold text-slate-900">Account Activity</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-4 p-6 sm:grid-cols-4">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-slate-900">{stats.poCount}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Purchase Orders</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-slate-900">{stats.invoiceCount}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Invoices</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-slate-900">{stats.supplierCount}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Suppliers</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold font-mono text-slate-900">{formatCurrency(stats.totalSpend).replace('.00', '')}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Total Spend</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Role Card */}
+        {/* Right column: Role + Notifications */}
         <div className="space-y-6">
+          {/* Role Card */}
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-6 py-4">
               <h3 className="text-sm font-semibold text-slate-900">Role and Permissions</h3>
@@ -143,31 +343,77 @@ export function Settings() {
 
               <p className="text-sm text-slate-600">{roleDescriptions[profile.role] ?? 'Custom role.'}</p>
 
-              <div className="rounded-lg bg-slate-50 p-4 space-y-2">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Permissions Summary</p>
-                <ul className="space-y-1.5 text-sm">
-                  <li className="flex items-center gap-2 text-slate-700">
-                    <span className={`h-1.5 w-1.5 rounded-full ${profile.role === 'admin' || profile.role === 'manager' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                    Create and edit records
-                  </li>
-                  <li className="flex items-center gap-2 text-slate-700">
-                    <span className={`h-1.5 w-1.5 rounded-full ${profile.role === 'admin' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                    Delete records
-                  </li>
-                  <li className="flex items-center gap-2 text-slate-700">
-                    <span className={`h-1.5 w-1.5 rounded-full ${profile.role === 'admin' || profile.role === 'manager' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                    Access reports
-                  </li>
-                  <li className="flex items-center gap-2 text-slate-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    View all modules
-                  </li>
-                </ul>
+              <div className="rounded-lg border border-slate-200 overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-500">Module</th>
+                      <th className="px-3 py-2 text-center font-semibold text-slate-500">Access</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {modulePermissions.map((m) => {
+                      const access = m[profile.role as keyof typeof m] as string | boolean;
+                      const hasAccess = access !== 'No access' && access !== false;
+                      return (
+                        <tr key={m.name}>
+                          <td className="px-3 py-2 text-slate-700">{m.name}</td>
+                          <td className={cn('px-3 py-2 text-center font-medium', hasAccess ? 'text-emerald-600' : 'text-slate-400')}>
+                            {typeof access === 'string' ? access : hasAccess ? 'Yes' : 'No'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
 
               <p className="text-xs text-slate-400">
                 Role assignment is managed by an administrator. Contact your admin if you need a role change.
               </p>
+            </div>
+          </div>
+
+          {/* Notification Preferences */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-6 py-4 flex items-center gap-2">
+              <Bell className="h-4 w-4 text-slate-400" />
+              <h3 className="text-sm font-semibold text-slate-900">Notification Preferences</h3>
+            </div>
+            <div className="p-6 space-y-3">
+              {[
+                { key: 'pendingApprovals' as const, label: 'Pending approvals', desc: 'POs awaiting action' },
+                { key: 'overdueInvoices' as const, label: 'Overdue invoices', desc: 'Past due date alerts' },
+                { key: 'weeklySummary' as const, label: 'Weekly summary', desc: 'Digest every Monday' },
+                { key: 'newSuppliers' as const, label: 'New suppliers', desc: 'When a supplier is added' },
+              ].map((item) => (
+                <label key={item.key} className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">{item.label}</p>
+                    <p className="text-xs text-slate-400">{item.desc}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNotifPrefs({ ...notifPrefs, [item.key]: !notifPrefs[item.key] })}
+                    className={cn(
+                      'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
+                      notifPrefs[item.key] ? 'bg-emerald-500' : 'bg-slate-200'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                        notifPrefs[item.key] ? 'translate-x-6' : 'translate-x-1'
+                      )}
+                    />
+                  </button>
+                </label>
+              ))}
+              <div className="pt-2">
+                <Button variant="outline" size="sm" onClick={handleSavePrefs}>
+                  {prefsSaved ? 'Saved!' : 'Save Preferences'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

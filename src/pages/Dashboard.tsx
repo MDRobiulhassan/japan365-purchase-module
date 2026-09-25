@@ -8,6 +8,7 @@ import {
   PackageCheck,
   AlertTriangle,
   Clock,
+  Search,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -19,6 +20,7 @@ import type { PurchaseOrder, PurchaseInvoice, Supplier } from '@/types';
 
 interface DashboardProps {
   onNavigate: (page: PageKey) => void;
+  searchQuery?: string;
 }
 
 interface KpiData {
@@ -32,12 +34,16 @@ interface KpiData {
   openAmount: number;
 }
 
-export function Dashboard({ onNavigate }: DashboardProps) {
+export function Dashboard({ onNavigate, searchQuery = '' }: DashboardProps) {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [kpis, setKpis] = useState<KpiData | null>(null);
   const [recentOrders, setRecentOrders] = useState<(PurchaseOrder & { supplier?: Supplier })[]>([]);
   const [overdueInv, setOverdueInv] = useState<(PurchaseInvoice & { supplier?: Supplier })[]>([]);
+  const [allOrders, setAllOrders] = useState<(PurchaseOrder & { supplier?: Supplier })[]>([]);
+  const [allInvoices, setAllInvoices] = useState<(PurchaseInvoice & { supplier?: Supplier })[]>([]);
+  const [allSuppliers, setAllSuppliers] = useState<Supplier[]>([]);
+  const [searchResults, setSearchResults] = useState<{ type: 'po' | 'invoice' | 'supplier'; label: string; sub: string; amount?: number }[] | null>(null);
 
   useEffect(() => {
     loadDashboard();
@@ -46,20 +52,20 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   async function loadDashboard() {
     setLoading(true);
     try {
-      // 1. Attempt to fetch pre-computed KPIs from dashboard_metrics_view
-      const { data: metrics, error: metricsErr } = await supabase
-        .from('dashboard_metrics_view')
-        .select('*')
-        .single();
-
-      // 2. Fetch recent orders and overdue invoices selectively
-      const [ordersRes, overdueRes] = await Promise.all([
+      const [ordersRes, overdueRes, suppliersRes, invoicesRes] = await Promise.all([
         supabase.from('purchase_orders').select('*, supplier:suppliers(*)').order('created_at', { ascending: false }).limit(8),
         supabase.from('purchase_invoices').select('*, supplier:suppliers(*)').or('status.eq.overdue,status.eq.unpaid').order('due_date', { ascending: true }).limit(5),
+        supabase.from('suppliers').select('*').order('name'),
+        supabase.from('purchase_invoices').select('*, supplier:suppliers(*)').order('created_at', { ascending: false }),
       ]);
 
       const orders = ordersRes.data ?? [];
       const overdue = (overdueRes.data ?? []).filter((i) => i.status === 'overdue' || new Date(i.due_date).getTime() < Date.now());
+
+      const { data: metrics, error: metricsErr } = await supabase
+        .from('dashboard_metrics_view')
+        .select('*')
+        .single();
 
       if (!metricsErr && metrics) {
         setKpis({
@@ -73,22 +79,10 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           openAmount: Number(metrics.open_invoice_amount),
         });
       } else {
-        // Fallback calculations if view is not yet applied
-        const [suppliersRes, invoicesRes, poReceiptsRes] = await Promise.all([
-          supabase.from('suppliers').select('*', { count: 'exact' }).eq('status', 'active'),
-          supabase.from('purchase_invoices').select('*, supplier:suppliers(*)'),
-          supabase.from('goods_receipts').select('po_id').eq('status', 'partial'),
-        ]);
-
-        const suppliers = suppliersRes.data ?? [];
-        const invoices = invoicesRes.data ?? [];
-        const partialReceiptPoIds = (poReceiptsRes.data ?? []).map((r) => r.po_id);
-
         const totalSpend = orders
           .filter((o) => o.status !== 'cancelled' && o.status !== 'draft')
           .reduce((sum, o) => sum + Number(o.total_amount), 0);
-
-        const openAmount = invoices
+        const openAmount = (invoicesRes.data ?? [])
           .filter((i) => i.status !== 'paid')
           .reduce((sum, i) => sum + (Number(i.total_amount) - Number(i.amount_paid)), 0);
 
@@ -96,16 +90,19 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           totalOrders: orders.length,
           pendingApproval: orders.filter((o) => o.status === 'pending_approval' || o.status === 'draft').length,
           totalSpend,
-          activeSuppliers: suppliers.length,
-          pendingInvoices: invoices.filter((i) => i.status !== 'paid').length,
+          activeSuppliers: (suppliersRes.data ?? []).filter((s) => s.status === 'active').length,
+          pendingInvoices: (invoicesRes.data ?? []).filter((i) => i.status !== 'paid').length,
           overdueInvoices: overdue.length,
-          pendingReceipts: partialReceiptPoIds.length,
+          pendingReceipts: 0,
           openAmount,
         });
       }
 
       setRecentOrders(orders as (PurchaseOrder & { supplier?: Supplier })[]);
       setOverdueInv(overdue as (PurchaseInvoice & { supplier?: Supplier })[]);
+      setAllOrders(orders as (PurchaseOrder & { supplier?: Supplier })[]);
+      setAllInvoices((invoicesRes.data as (PurchaseInvoice & { supplier?: Supplier })[]) ?? []);
+      setAllSuppliers((suppliersRes.data as Supplier[]) ?? []);
     } catch (err) {
       console.error('Dashboard load error:', err);
     } finally {
@@ -113,51 +110,53 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     }
   }
 
-  if (loading) return <LoadingSpinner size="lg" />;
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    const q = searchQuery.toLowerCase();
+    const results: { type: 'po' | 'invoice' | 'supplier'; label: string; sub: string; amount?: number }[] = [];
+
+    for (const o of allOrders) {
+      if (o.po_number.toLowerCase().includes(q) || (o.supplier?.name?.toLowerCase().includes(q) ?? false)) {
+        results.push({
+          type: 'po',
+          label: o.po_number,
+          sub: `PO · ${o.supplier?.name ?? 'Unknown'} · ${formatDate(o.order_date)}`,
+          amount: Number(o.total_amount),
+        });
+      }
+    }
+    for (const i of allInvoices) {
+      if (i.invoice_number.toLowerCase().includes(q) || (i.supplier?.name?.toLowerCase().includes(q) ?? false)) {
+        results.push({
+          type: 'invoice',
+          label: i.invoice_number,
+          sub: `Invoice · ${i.supplier?.name ?? 'Unknown'} · ${formatDate(i.invoice_date)}`,
+          amount: Number(i.total_amount),
+        });
+      }
+    }
+    for (const s of allSuppliers) {
+      if (s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)) {
+        results.push({
+          type: 'supplier',
+          label: s.name,
+          sub: `Supplier · ${s.code} · ${s.city ?? ''}, ${s.country ?? ''}`,
+        });
+      }
+    }
+    setSearchResults(results.slice(0, 20));
+  }, [searchQuery, allOrders, allInvoices, allSuppliers]);
 
   const kpiCards = [
-    {
-      label: 'Total Purchase Orders',
-      value: kpis?.totalOrders?.toString() ?? '0',
-      icon: FileText,
-      color: 'blue',
-      onClick: () => onNavigate('purchase-orders'),
-    },
-    {
-      label: 'Pending Approval',
-      value: kpis?.pendingApproval?.toString() ?? '0',
-      icon: Clock,
-      color: 'amber',
-      onClick: () => onNavigate('purchase-orders'),
-    },
-    {
-      label: 'Active Suppliers',
-      value: kpis?.activeSuppliers?.toString() ?? '0',
-      icon: Truck,
-      color: 'cyan',
-      onClick: () => onNavigate('suppliers'),
-    },
-    {
-      label: 'Total Spend',
-      value: formatCurrency(kpis?.totalSpend ?? 0),
-      icon: DollarSign,
-      color: 'green',
-      onClick: () => onNavigate('reports'),
-    },
-    {
-      label: 'Open Invoice Amount',
-      value: formatCurrency(kpis?.openAmount ?? 0),
-      icon: Receipt,
-      color: 'purple',
-      onClick: () => onNavigate('invoices'),
-    },
-    {
-      label: 'Overdue Invoices',
-      value: kpis?.overdueInvoices?.toString() ?? '0',
-      icon: AlertTriangle,
-      color: 'red',
-      onClick: () => onNavigate('invoices'),
-    },
+    { label: 'Total Purchase Orders', value: kpis?.totalOrders?.toString() ?? '0', icon: FileText, color: 'blue', onClick: () => onNavigate('purchase-orders') },
+    { label: 'Pending Approval', value: kpis?.pendingApproval?.toString() ?? '0', icon: Clock, color: 'amber', onClick: () => onNavigate('purchase-orders') },
+    { label: 'Active Suppliers', value: kpis?.activeSuppliers?.toString() ?? '0', icon: Truck, color: 'cyan', onClick: () => onNavigate('suppliers') },
+    { label: 'Total Spend', value: formatCurrency(kpis?.totalSpend ?? 0), icon: DollarSign, color: 'green', onClick: () => onNavigate('reports') },
+    { label: 'Open Invoice Amount', value: formatCurrency(kpis?.openAmount ?? 0), icon: Receipt, color: 'purple', onClick: () => onNavigate('invoices') },
+    { label: 'Overdue Invoices', value: kpis?.overdueInvoices?.toString() ?? '0', icon: AlertTriangle, color: 'red', onClick: () => onNavigate('invoices') },
   ];
 
   const colorClasses: Record<string, { bg: string; text: string; ring: string }> = {
@@ -169,8 +168,45 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     red: { bg: 'bg-red-50', text: 'text-red-600', ring: 'ring-red-100' },
   };
 
+  if (loading && !kpis) return <LoadingSpinner size="lg" />;
+
+  // Search results overlay
+  if (searchResults) {
+    return (
+      <div className="space-y-4 p-4 sm:p-6 max-w-4xl mx-auto">
+        <div className="flex items-center gap-2 text-slate-700">
+          <Search className="h-5 w-5 text-slate-400" />
+          <h2 className="text-lg font-semibold">
+            {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} for "{searchQuery}"
+          </h2>
+        </div>
+        {searchResults.length === 0 ? (
+          <EmptyState icon={<Search className="h-10 w-10" />} title="No results found" description="Try searching with a different keyword." />
+        ) : (
+          <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white shadow-sm">
+            {searchResults.map((r, idx) => (
+              <button
+                key={idx}
+                onClick={() => onNavigate(r.type === 'po' ? 'purchase-orders' : r.type === 'invoice' ? 'invoices' : 'suppliers')}
+                className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-slate-50 transition-colors"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">{r.label}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{r.sub}</p>
+                </div>
+                {r.amount !== undefined && (
+                  <span className="text-sm font-semibold text-slate-700">{formatCurrency(r.amount)}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
+    <div className="space-y-6 p-4 sm:p-6 max-w-7xl mx-auto animate-fadeIn">
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Welcome back, {profile?.full_name?.split(' ')[0] ?? 'User'}</h2>
         <p className="mt-1 text-sm text-slate-500">
@@ -178,7 +214,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         </p>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {kpiCards.map((kpi) => {
           const Icon = kpi.icon;
@@ -200,17 +235,13 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Recent Purchase Orders */}
         <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-slate-400" />
               <h3 className="text-sm font-semibold text-slate-800">Recent Purchase Orders</h3>
             </div>
-            <button
-              onClick={() => onNavigate('purchase-orders')}
-              className="text-xs font-medium text-blue-600 hover:text-blue-700"
-            >
+            <button onClick={() => onNavigate('purchase-orders')} className="text-xs font-medium text-blue-600 hover:text-blue-700">
               View all →
             </button>
           </div>
@@ -242,17 +273,13 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           </div>
         </div>
 
-        {/* Overdue Invoices */}
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-red-500" />
               <h3 className="text-sm font-semibold text-slate-800">Overdue Invoices</h3>
             </div>
-            <button
-              onClick={() => onNavigate('invoices')}
-              className="text-xs font-medium text-blue-600 hover:text-blue-700"
-            >
+            <button onClick={() => onNavigate('invoices')} className="text-xs font-medium text-blue-600 hover:text-blue-700">
               View all →
             </button>
           </div>
