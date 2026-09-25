@@ -206,15 +206,22 @@ src/
 - Created automated triggers for PO status updates and overdue invoice syncing
 - Set up auto-numbering RPC functions for PO, GRN, supplier, and invoice codes
 
-### Robiul Hassan (1043) - Backend Development
-- Built the auth context with session management and onAuthStateChange handling
-- Implemented role-based access control logic on the client side
-- Set up the Supabase client singleton
-- Wrote client-side data access utilities for all CRUD operations
-- Integrated auto-numbering RPC calls for generating sequential codes
-- Implemented payment recording and invoice status transition logic
-- Handled PO item received quantity updates after GRN creation
-- Managed GRN deletion with quantity restoration back to PO items
+### Robiul Hassan (1043) - Backend & Application Development
+- Architected and implemented the application's core backend and data-access architecture
+- Built the authentication system with session management and `onAuthStateChange` handling
+- Implemented role-based access control and protected application flows
+- Set up and configured the Supabase client singleton and application integration
+- Developed the complete client-side data-access layer for suppliers, purchase orders, goods receipts, invoices, profiles, and related operations
+- Implemented CRUD operations and business logic across the core procurement modules
+- Integrated auto-numbering RPC functions for generating sequential PO, GRN, supplier, and invoice codes
+- Implemented purchase order creation, item management, and status handling logic
+- Developed goods receipt processing, including received-quantity tracking and PO item updates
+- Implemented GRN deletion logic with automatic quantity restoration to associated PO items
+- Developed invoice payment recording and invoice status transition logic
+- Integrated dashboard and analytics data with the application's backend services
+- Connected frontend components with Supabase queries, RPC functions, and database operations
+- Handled application-level validation, error states, loading states, and data synchronization across modules
+- Coordinated backend integration between the database architecture and frontend workflows
 
 ### Mahafujul Alam (1066) - Frontend Development
 - Developed the dashboard with KPI cards and recent activity lists
