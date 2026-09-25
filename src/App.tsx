@@ -8,6 +8,7 @@ import { GoodsReceipts } from '@/pages/GoodsReceipts';
 import { Invoices } from '@/pages/Invoices';
 import { Reports } from '@/pages/Reports';
 import { Settings } from '@/pages/Settings';
+import { Profile } from '@/pages/Profile';
 import { LoginPage } from '@/pages/LoginPage';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -19,7 +20,8 @@ const pageTitles: Record<PageKey, { title: string; subtitle: string }> = {
   'goods-receipts': { title: 'Goods Receipts', subtitle: 'Record received goods' },
   invoices: { title: 'Invoices', subtitle: 'Supplier invoices and payments' },
   reports: { title: 'Reports', subtitle: 'Analytics and insights' },
-  settings: { title: 'Profile & Settings', subtitle: 'User account details and role permissions' },
+  settings: { title: 'Settings', subtitle: 'Notification and display preferences' },
+  profile: { title: 'My Profile', subtitle: 'Account details and security' },
 };
 
 const STORAGE_KEY = 'japan365_current_page';
@@ -74,6 +76,8 @@ function AppContent() {
         return <Reports />;
       case 'settings':
         return <Settings />;
+      case 'profile':
+        return <Profile />;
     }
   };
 

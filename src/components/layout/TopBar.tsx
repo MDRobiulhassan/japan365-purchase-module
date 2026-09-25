@@ -261,7 +261,7 @@ export function TopBar({ title, subtitle, onToggleSidebar, sidebarCollapsed, onN
             </div>
             <div className="py-1">
               <button
-                onClick={() => { setUserOpen(false); onNavigate('settings'); }}
+                onClick={() => { setUserOpen(false); onNavigate('profile'); }}
                 className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
               >
                 <User className="h-4 w-4 text-slate-400" />

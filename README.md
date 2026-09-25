@@ -9,33 +9,71 @@ A procurement management system for tracking suppliers, purchase orders, goods r
 - Quick navigation to any module
 - Recent purchase orders list
 - Overdue invoice alerts
+- Search bar that filters across modules
 
 ### Suppliers
 - Full supplier directory with contact details, tax IDs, and payment terms
 - Add, edit, and deactivate supplier records
 - Search and filter by status
+- Auto-generated supplier codes
 
 ### Purchase Orders
 - Create purchase orders with multiple line items
 - Automatic calculation of subtotal, tax, shipping, and total
 - Status workflow: Draft > Pending Approval > Approved > Partially Received > Received > Closed
 - Track received quantities per line item
+- Print and export purchase orders
 
 ### Goods Receipts
 - Record goods received against purchase orders
 - Partial and complete receipt support
 - Links to originating PO and supplier
 - GRN numbering auto-generated
+- Automatic PO status updates when goods are received
+- Quantity validation to prevent over-receiving
 
 ### Invoices
 - Track supplier invoices with payment status
 - Status options: Unpaid, Partially Paid, Paid, Overdue
 - Link invoices to purchase orders
 - Record partial payments
+- Overdue invoice detection and alerts
 
 ### Reports
 - Procurement analytics and insights
+- Monthly spend tracking and charts
+- Supplier performance breakdown
 - Access restricted to admin and manager roles
+
+### Profile
+- View account information, avatar, and role badge
+- Edit full name
+- Change password with confirmation
+- View account activity stats (PO count, invoice count, supplier count, total spend)
+- View role and permissions table
+
+### Settings
+- Manage notification preferences (pending approvals, overdue invoices, weekly summary, new suppliers)
+- Manage display preferences (compact tables, GRN column visibility, auto-refresh)
+- View system information
+
+### Authentication and Security
+- Email and password login with Supabase Auth
+- Three demo accounts for testing different roles
+- New account registration from the login page
+- Password change from the Profile page
+- Session persistence across page reloads
+
+### Notifications
+- Real-time notification panel in the top bar
+- Pending PO approval alerts
+- Overdue invoice alerts
+- Mark all as read functionality
+
+### Print and Export
+- Print purchase orders and goods receipts
+- Export data tables to CSV
+- Print preview modal with formatted output
 
 ## Role-Based Access Control
 
@@ -51,11 +89,11 @@ New accounts created through the login page default to the Staff role. Only an a
 
 ## Tech Stack
 
-- **Frontend:** React 18, TypeScript, Vite
-- **Styling:** Tailwind CSS
-- **Icons:** Lucide React
-- **Backend:** Supabase (PostgreSQL, Auth, Row Level Security)
-- **Database Security:** RLS policies with role-based enforcement via a SECURITY DEFINER function
+- Frontend: React 18, TypeScript, Vite
+- Styling: Tailwind CSS
+- Icons: Lucide React
+- Backend: Supabase (PostgreSQL, Auth, Row Level Security)
+- Database Security: RLS policies with role-based enforcement via a SECURITY DEFINER function
 
 ## Demo Accounts
 
@@ -73,17 +111,17 @@ Click any account in the demo accounts panel on the login page to auto-fill the 
 
 ### Tables
 
-1. **profiles** - User profiles linked to Supabase Auth, storing full name and role
-2. **suppliers** - Vendor directory with contact info, tax IDs, and payment terms
-3. **purchase_orders** - PO headers with supplier, dates, totals, and status
-4. **purchase_order_items** - Line items for each purchase order
-5. **goods_receipts** - GRN headers linked to POs and suppliers
-6. **goods_receipt_items** - Individual received items per GRN
-7. **purchase_invoices** - Supplier invoices with payment tracking
+1. profiles - User profiles linked to Supabase Auth, storing full name and role
+2. suppliers - Vendor directory with contact info, tax IDs, and payment terms
+3. purchase_orders - PO headers with supplier, dates, totals, and status
+4. purchase_order_items - Line items for each purchase order
+5. goods_receipts - GRN headers linked to POs and suppliers
+6. goods_receipt_items - Individual received items per GRN
+7. purchase_invoices - Supplier invoices with payment tracking
 
 ### Security
 
-All tables have Row Level Security enabled. A SECURITY DEFINER function (`user_role()`) reads the current user's role from the profiles table and enforces it in RLS policies. This ensures:
+All tables have Row Level Security enabled. A SECURITY DEFINER function (user_role()) reads the current user's role from the profiles table and enforces it in RLS policies. This ensures:
 
 - All authenticated users can read data
 - Only admin and manager roles can insert and update records
@@ -97,25 +135,30 @@ src/
   components/
     layout/
       Sidebar.tsx        - Navigation sidebar with role-based menu filtering
-      TopBar.tsx         - Top bar with page title, search, and notifications
+      TopBar.tsx         - Top bar with page title, search, notifications, and user dropdown
+    print/
+      PrintModal.tsx     - Print preview modal for POs and GRNs
     ui/
       Badge.tsx          - Status badge component
       Button.tsx         - Reusable button component
-      DataTable.tsx      - Generic table with sorting
-      Input.tsx          - Form input and select components
+      DataTable.tsx      - Generic table with sorting and CSV export
+      Input.tsx          - Form input, select, and textarea components
       Modal.tsx          - Dialog/modal component
-      States.tsx         - Empty and loading state components
+      States.tsx         - Empty, loading, and error state components
   lib/
     auth.tsx             - Auth context provider with session management
+    exportUtils.ts       - CSV export utility functions
     supabase.ts          - Supabase client singleton
-    utils.ts             - Shared utility functions (formatting, etc.)
+    utils.ts             - Shared utility functions (formatting, code generation)
   pages/
-    Dashboard.tsx        - Procurement overview dashboard
+    Dashboard.tsx        - Procurement overview dashboard with KPI cards
     Suppliers.tsx        - Supplier directory CRUD
-    PurchaseOrders.tsx   - Purchase order management
+    PurchaseOrders.tsx   - Purchase order management with line items
     GoodsReceipts.tsx    - Goods receipt note management
-    Invoices.tsx         - Supplier invoice tracking
-    Reports.tsx          - Analytics (admin/manager only)
+    Invoices.tsx         - Supplier invoice tracking with payment recording
+    Reports.tsx          - Analytics page (admin/manager only)
+    Profile.tsx          - User profile, password change, and activity stats
+    Settings.tsx         - Notification and display preferences
     LoginPage.tsx        - Sign in page with demo accounts
   types/
     index.ts             - TypeScript interfaces for all data models
@@ -153,11 +196,38 @@ src/
 
 ## Contributors
 
-### Samin Osman (1042) — Database Design
-Designed the full PostgreSQL schema in Supabase, including all seven tables (profiles, suppliers, purchase_orders, purchase_order_items, goods_receipts, goods_receipt_items, purchase_invoices), their relationships, and constraints. Implemented Row Level Security policies on every table with role-based enforcement via a SECURITY DEFINER function. Created database views for dashboard metrics, performance indexes, and automated triggers for PO status updates and overdue invoice syncing.
+### Samin Osman (1042) - Database Design
+- Designed the PostgreSQL schema with seven tables (profiles, suppliers, purchase_orders, purchase_order_items, goods_receipts, goods_receipt_items, purchase_invoices)
+- Defined table relationships, foreign keys, and constraints
+- Implemented Row Level Security policies on every table
+- Created the SECURITY DEFINER user_role() function for role-based access enforcement
+- Built database views for dashboard metric aggregation
+- Added performance indexes for frequently queried columns
+- Created automated triggers for PO status updates and overdue invoice syncing
+- Set up auto-numbering RPC functions for PO, GRN, supplier, and invoice codes
 
-### Robiul Hassan (1043) — Backend Development
-Built the Supabase backend layer: auth context with session management, auto-numbering RPC functions for PO, GRN, supplier, and invoice codes, and client-side data access utilities. Integrated role-based access control so admins can delete, managers can create/edit, and staff has read-only access. Set up the Supabase client singleton and wrote the server-side logic for payment recording and invoice status transitions.
+### Robiul Hassan (1043) - Backend Development
+- Built the auth context with session management and onAuthStateChange handling
+- Implemented role-based access control logic on the client side
+- Set up the Supabase client singleton
+- Wrote client-side data access utilities for all CRUD operations
+- Integrated auto-numbering RPC calls for generating sequential codes
+- Implemented payment recording and invoice status transition logic
+- Handled PO item received quantity updates after GRN creation
+- Managed GRN deletion with quantity restoration back to PO items
 
-### Mahafujul Alam (1066) — Frontend Development
-Developed the complete React user interface: dashboard with KPI cards and recent activity, supplier directory, purchase order creation with multi-line items and live total calculation, goods receipt tracking, invoice management with payment recording, and the analytics reports page with the monthly spend chart. Designed the responsive layout, navigation sidebar, user dropdown, notification panel, print/PDF export system, and the settings page with password change and permission controls.
+### Mahafujul Alam (1066) - Frontend Development
+- Developed the dashboard with KPI cards and recent activity lists
+- Built the supplier directory with search, filter, and CRUD operations
+- Created the purchase order form with multi-line items and live total calculation
+- Developed goods receipt tracking with quantity validation and PO status updates
+- Built invoice management with payment recording and overdue detection
+- Created the analytics reports page with monthly spend charts
+- Designed the responsive layout with collapsible sidebar and navigation
+- Implemented the user dropdown with profile and settings navigation
+- Built the notification panel with pending PO and overdue invoice alerts
+- Created the print and PDF export system for POs and GRNs
+- Developed the profile page with password change and activity stats
+- Designed the settings page with notification and display preferences
+- Built reusable UI components (Button, Input, Modal, DataTable, Badge, States)
+- Implemented the login page with demo account quick-fill

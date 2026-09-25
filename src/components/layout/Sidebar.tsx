@@ -17,7 +17,8 @@ export type PageKey =
   | 'goods-receipts'
   | 'invoices'
   | 'reports'
-  | 'settings';
+  | 'settings'
+  | 'profile';
 
 interface SidebarProps {
   current: PageKey;
