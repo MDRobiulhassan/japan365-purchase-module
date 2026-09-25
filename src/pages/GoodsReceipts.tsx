@@ -41,7 +41,6 @@ export function GoodsReceipts() {
   const [modalOpen, setModalOpen] = useState(false);
   const [viewing, setViewing] = useState<GoodsReceipt | null>(null);
   const [viewItems, setViewItems] = useState<GoodsReceiptItem[]>([]);
-  const [viewPo, setViewPo] = useState<PurchaseOrder | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<GoodsReceipt | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -153,11 +152,26 @@ export function GoodsReceipts() {
     }
 
     const itemsToReceive = receiptItems.filter(
-      (i) => parseFloat(i.quantity_received) > 0
+      (i) => {
+        const val = parseFloat(i.quantity_received);
+        return !isNaN(val) && val > 0;
+      }
     );
 
-    if (itemsToReceive.length === 0) {
-      errors.items = 'Enter at least one item quantity to receive (> 0)';
+    if (receiptItems.length > 0 && itemsToReceive.length === 0) {
+      errors.items = 'Enter at least one quantity greater than 0 to receive';
+    }
+
+    // Validate no quantity exceeds the remaining amount
+    for (const item of receiptItems) {
+      const val = parseFloat(item.quantity_received);
+      if (!isNaN(val) && val > 0) {
+        const remaining = item.ordered - item.alreadyReceived;
+        if (val > remaining) {
+          errors.items = `Quantity for "${item.description}" cannot exceed remaining ${remaining}`;
+          break;
+        }
+      }
     }
 
     setFieldErrors(errors);
@@ -173,7 +187,10 @@ export function GoodsReceipts() {
   async function handleSave() {
     if (!validateForm()) return;
     const itemsToReceive = receiptItems.filter(
-      (i) => parseFloat(i.quantity_received) > 0
+      (i) => {
+        const val = parseFloat(i.quantity_received);
+        return !isNaN(val) && val > 0;
+      }
     );
 
     setSaving(true);
@@ -245,8 +262,6 @@ export function GoodsReceipts() {
       .eq('grn_id', r.id)
       .order('created_at', { ascending: true });
     setViewItems((items as GoodsReceiptItem[]) ?? []);
-    if (r.purchase_order) setViewPo(r.purchase_order);
-    else setViewPo(null);
   }
 
   async function handleDelete() {
